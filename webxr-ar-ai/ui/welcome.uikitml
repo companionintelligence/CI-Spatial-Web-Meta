@@ -1,0 +1,15 @@
+<uikitml version="1.0">
+  <panel id="welcome-panel" layout="column" padding="24" gap="14"
+         background="rgba(0,0,0,0.75)" border-radius="12">
+    <text id="title"    font-size="22" font-weight="bold"  color="#ffffff">Companion Scan</text>
+    <text id="subtitle" font-size="13" color="rgba(255,255,255,0.6)">
+      Quest 3 · AR Spatial Mapper
+    </text>
+    <separator />
+    <text font-size="12" color="rgba(255,255,255,0.5)">Right A  — Capture</text>
+    <text font-size="12" color="rgba(255,255,255,0.5)">Right B  — Cycle Model</text>
+    <text font-size="12" color="rgba(255,255,255,0.5)">Left X   — Preview Distance</text>
+    <text font-size="12" color="rgba(255,255,255,0.5)">Left Y   — Save &amp; Export</text>
+    <text font-size="12" color="rgba(255,255,255,0.5)">Trigger  — Display Mode</text>
+  </panel>
+</uikitml>

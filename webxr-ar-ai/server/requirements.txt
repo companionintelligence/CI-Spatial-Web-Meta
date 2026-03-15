@@ -1,0 +1,9 @@
+# Core server
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+
+# AI / vision
+groundingdino-py>=0.1.0
+Pillow>=10.0.0
+# torch + torchvision — install separately with the correct CUDA index URL:
+#   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
