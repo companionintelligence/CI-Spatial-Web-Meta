@@ -152,3 +152,6 @@ venv/
 # Uploads
 /tmp/gltf_uploads/
 webxr-ar-ai/dist/
+webxr-ar-ai/test-results/
+webxr-ar-ai/playwright-report/
+webxr-ar-ai/coverage/
