@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Companion Scan — Test Harness</title>
+  </head>
+  <body>
+    <div id="scene-container"></div>
+    <script type="module">
+      /**
+       * Test harness — imports pure-logic modules and exposes them on window
+       * so Playwright tests can interact with them without needing the full
+       * IWSDK World.create() flow.
+       *
+       * Exposed as window.CS (CompanionScan).
+       */
+      import { appState, ModelPreset, DisplayMode, PreviewDistance }
+        from '/src/app/AppState.js';
+      import { SpatialPin, PinSource }
+        from '/src/spatial/SpatialPin.js';
+      import { SpatialPinManager }
+        from '/src/spatial/SpatialPinManager.js';
+      import { CvServerClient }
+        from '/src/cv/CvServerClient.js';
+
+      // Expose everything on window for Playwright page.evaluate()
+      window.CS = {
+        appState,
+        ModelPreset,
+        DisplayMode,
+        PreviewDistance,
+        SpatialPin,
+        PinSource,
+        SpatialPinManager,
+        CvServerClient,
+      };
+
+      // Create a shared pin manager for E2E tests
+      window.CS.pinManager = new SpatialPinManager({ mergeByTrackId: true });
+
+      // Signal that the harness is ready
+      window.__harnessReady = true;
+      console.log('[harness] ready');
+    </script>
+  </body>
+</html>
