@@ -46,7 +46,7 @@ _models: dict[str, Any] = {}
 def _gdino():
     if "gdino" not in _models:
         logger.info("Loading GroundingDINO…")
-        from groundingdino.util.inference import load_model, predict  # noqa: F401
+        from groundingdino.util.inference import load_model, predict
         import groundingdino.datasets.transforms as T
         import groundingdino
 

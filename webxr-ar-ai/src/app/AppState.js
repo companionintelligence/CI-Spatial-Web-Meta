@@ -87,6 +87,7 @@ class AppState {
       case PreviewDistance.Near: return 'Near (1m)';
       case PreviewDistance.Far:  return 'Far (3m)';
       case PreviewDistance.Off:  return 'Off';
+      default: return 'Unknown';
     }
   }
 }
