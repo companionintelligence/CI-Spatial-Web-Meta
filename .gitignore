@@ -137,3 +137,17 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Python server
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Model weights (large binary files)
+**/weights/*.pth
+**/weights/*.pt
+**/weights/*.safetensors
+
+# Uploads
+/tmp/gltf_uploads/
