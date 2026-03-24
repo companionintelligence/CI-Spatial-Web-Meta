@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Companion Scan — 3D World Map Viewer</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Inter, system-ui, sans-serif;
+        color: #e7f4ff;
+        background: #040a12;
+      }
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(320px, 380px) 1fr;
+        min-height: 100dvh;
+      }
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        padding: 20px;
+        background: linear-gradient(180deg, #09192c 0%, #08121e 100%);
+        border-right: 1px solid #163147;
+        overflow: auto;
+      }
+      .panel {
+        padding: 16px;
+        border: 1px solid #163147;
+        border-radius: 16px;
+        background: rgba(3, 11, 21, 0.82);
+      }
+      .panel h2, .panel h3, .panel p { margin: 0 0 12px; }
+      .actions {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      button, input, select, textarea {
+        width: 100%;
+        border: 1px solid #31506d;
+        border-radius: 10px;
+        background: #0c1a2b;
+        color: inherit;
+        padding: 10px 12px;
+      }
+      button {
+        cursor: pointer;
+        background: linear-gradient(180deg, #153657 0%, #0d2238 100%);
+      }
+      button:hover { border-color: #5bc0eb; }
+      textarea { min-height: 92px; resize: vertical; }
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 8px 12px;
+      }
+      .stat-grid strong {
+        display: block;
+        color: #8fb6d8;
+        font-size: 12px;
+        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+      .viewer-stage {
+        position: relative;
+        min-height: 100dvh;
+      }
+      #viewer-canvas {
+        width: 100%;
+        height: 100dvh;
+      }
+      .status {
+        position: absolute;
+        left: 16px;
+        right: 16px;
+        bottom: 16px;
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: rgba(4, 10, 18, 0.84);
+        border: 1px solid #163147;
+        color: #8fb6d8;
+      }
+      .pin-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        max-height: 220px;
+        overflow: auto;
+      }
+      .pin-list-item {
+        text-align: left;
+      }
+      .pin-list-item.is-selected {
+        border-color: #5bc0eb;
+        background: #143556;
+      }
+      .form-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+      .field-full {
+        grid-column: 1 / -1;
+      }
+      .source-toggle {
+        display: flex;
+        gap: 12px;
+      }
+      .source-toggle label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #8fb6d8;
+      }
+      .source-toggle input {
+        width: auto;
+        margin: 0;
+      }
+      @media (max-width: 960px) {
+        .layout { grid-template-columns: 1fr; }
+        .viewer-stage, #viewer-canvas { min-height: 60dvh; height: 60dvh; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <aside class="sidebar">
+        <section class="panel">
+          <h2>3D World Map Viewer / Editor</h2>
+          <p>
+            Companion Scan viewer/editor inspired by the Pascal separation of a reusable
+            viewer plus editor controls. Load a GLB export, inspect world pins, edit the
+            mapping metadata, and export the updated result.
+          </p>
+          <input id="world-file" type="file" accept=".glb,.gltf,model/gltf-binary" />
+          <div class="actions" style="margin-top:12px">
+            <button id="load-demo" type="button">Load demo world map</button>
+            <button id="reset-view" type="button">Reset camera</button>
+            <button id="download-json" type="button">Download JSON</button>
+            <button id="download-glb" type="button">Export GLB</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>World mapping summary</h3>
+          <div class="stat-grid">
+            <div><strong>Session</strong><span id="meta-session">—</span></div>
+            <div><strong>Exported</strong><span id="meta-exported">—</span></div>
+            <div><strong>Total pins</strong><span id="meta-total">0</span></div>
+            <div><strong>CV pins</strong><span id="meta-cv">0</span></div>
+            <div><strong>Scene pins</strong><span id="meta-scene">0</span></div>
+          </div>
+          <div class="source-toggle" style="margin-top:12px">
+            <label><input id="toggle-CvServer" type="checkbox" checked /> CvServer</label>
+            <label><input id="toggle-MetaScene" type="checkbox" checked /> MetaScene</label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Pins</h3>
+          <div id="pin-list" class="pin-list"></div>
+        </section>
+
+        <section class="panel">
+          <h3>Selected pin editor</h3>
+          <p id="pin-empty">Select a pin in the list or directly in the 3D view.</p>
+          <form id="pin-form" hidden>
+            <div class="form-grid">
+              <div class="field-full"><strong>ID</strong><div id="pin-id"></div></div>
+              <label class="field-full">Label <input id="pin-label" type="text" /></label>
+              <label>Source
+                <select id="pin-source">
+                  <option value="CvServer">CvServer</option>
+                  <option value="MetaScene">MetaScene</option>
+                </select>
+              </label>
+              <label>Confidence <input id="pin-confidence" type="number" min="0" max="1" step="0.01" /></label>
+              <label>X <input id="pin-x" type="number" step="0.01" /></label>
+              <label>Y <input id="pin-y" type="number" step="0.01" /></label>
+              <label>Z <input id="pin-z" type="number" step="0.01" /></label>
+              <label class="field-full">Caption <textarea id="pin-caption"></textarea></label>
+            </div>
+          </form>
+        </section>
+      </aside>
+
+      <main class="viewer-stage">
+        <div id="viewer-canvas"></div>
+        <div id="status" class="status">Load a Companion Scan GLB or use the demo scene.</div>
+      </main>
+    </div>
+
+    <script type="module" src="/src/viewer-main.js"></script>
+  </body>
+  </html>

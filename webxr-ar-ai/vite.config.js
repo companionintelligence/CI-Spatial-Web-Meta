@@ -15,6 +15,12 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',  // required for top-level await
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'),
+        viewer: resolve(__dirname, 'viewer.html'),
+      },
+    },
   },
   server: {
     host: '0.0.0.0',

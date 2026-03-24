@@ -140,3 +140,68 @@ GltfSyncClient.sync(scene, pinManager)
   }
 }
 ```
+
+## 3D World Mapping Standards
+
+The Companion Scan export format uses the scene-level `extras.companion_scan` object as
+the canonical world-map payload. Viewer/editor tools should treat that object as the
+single source of truth for map metadata.
+
+### Coordinate and pose conventions
+
+- Positions are expressed in **local-floor metres** using the WebXR `local-floor`
+  reference space.
+- Rotations use a quaternion `{x,y,z,w}`.
+- `floorplan.bounds.min/max` defines the exported world-map envelope in the same space.
+
+### Required scene metadata
+
+The following fields form the stable scene contract:
+
+| Field | Type | Meaning |
+|------|------|---------|
+| `version` | string | Mapping schema version, currently `1.0` |
+| `session_id` | string | Capture session identifier |
+| `exported_at` | string | ISO timestamp for export time |
+| `pins` | array | Spatial observations and annotations |
+| `floorplan` | object/null | Bounding box plus source counts |
+
+### Pin schema
+
+Each element in `pins[]` is a world-anchored observation with these expectations:
+
+- `id` is stable inside the export and should be preserved by editors.
+- `source` is either `MetaScene` (WebXR scene understanding) or `CvServer`
+  (camera/CV placement).
+- `label` is the human-readable annotation shown in viewers and editors.
+- `position` and `rotation` are the authoring pose used for 3D placement.
+- `confidence` and `placement_confidence` remain numeric scores in the range `0..1`.
+- Optional fields such as `semantic_labels`, `plane_extents`, `mask_rle`, and
+  `florence_caption` should be preserved when re-exporting so downstream tooling can
+  reconstruct the original scene semantics.
+
+### Viewer/editor interoperability rules
+
+To keep viewer and editor tooling compatible:
+
+1. Read metadata from `scene.userData.companion_scan` or the equivalent glTF scene
+   `extras.companion_scan` payload.
+2. Preserve all unknown pin fields during edits rather than stripping them.
+3. Recompute `floorplan.bounds` only when pin positions change or when the export did
+   not include bounds.
+4. Treat `MetaScene` pins as structural anchors and `CvServer` pins as semantic/object
+   annotations for filtering and colouring.
+
+## Web Viewer / Editor
+
+The repository now includes `webxr-ar-ai/viewer.html`, a lightweight browser-based
+world-map viewer/editor inspired by the Pascal split between a reusable viewer and an
+editor sidebar.
+
+Supported workflows:
+
+- load a Companion Scan GLB/GLTF export directly in the browser
+- inspect `companion_scan` scene metadata and pin counts
+- select pins in 3D or from the list
+- edit label, source, confidence, position, and caption fields
+- export the edited metadata as JSON or re-export a GLB with the updated scene extras

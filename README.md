@@ -51,6 +51,16 @@ npm run dev
 # Starts on https://0.0.0.0:8081
 ```
 
+### 2a. Open the 3D world map viewer/editor
+
+Once the frontend is running, open `https://<PC-IP>:8081/viewer.html`.
+
+The viewer/editor is a lightweight Pascal-style split between:
+
+- a reusable 3D viewer for loading Companion Scan GLB exports
+- an editor sidebar for pin inspection, label/source/pose updates, and re-export
+- JSON and GLB download actions for reviewing or handing off edited world maps
+
 ### 3. Open on Quest 3
 
 Navigate to `https://<PC-IP>:8081` in the Meta Quest browser and accept the certificate.  
@@ -80,10 +90,12 @@ BUSY…       ← during capture
 ```
 webxr-ar-ai/
 ├── index.html
+├── viewer.html
 ├── vite.config.js
 ├── package.json
 ├── src/
 │   ├── main.js                       # Entry: World.create + system wiring
+│   ├── viewer-main.js                # Entry: world map viewer/editor bootstrap
 │   ├── app/
 │   │   └── AppState.js               # Reactive singleton state
 │   ├── spatial/
@@ -103,6 +115,9 @@ webxr-ar-ai/
 │   ├── ui/
 │   │   ├── ControllerMenuBuilder.js  # Coloured disc indicators on controllers
 │   │   └── WristHUD.js               # Left-wrist canvas panel
+│   ├── viewer/
+│   │   ├── companionScanMetadata.js  # Viewer/editor mapping schema helpers
+│   │   └── WorldMapViewer.js         # GLB loader + 3D pin viewer/editor
 │   └── export/
 │       ├── GltfExporter.js           # GLTFExporter + spatial metadata extras
 │       └── GltfSyncClient.js         # Upload GLB to /v1/gltf
