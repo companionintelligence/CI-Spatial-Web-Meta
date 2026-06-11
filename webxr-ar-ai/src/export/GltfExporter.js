@@ -90,9 +90,10 @@ function _serialisePin(pin, worldToAnchorLocal) {
     source:               pin.source,
     label:                pin.label,
     position:             pin.worldPosition,
-    position_anchor_local: worldToAnchorLocal
-      ? worldToAnchorLocal(pin.worldPosition)
-      : pin.worldPosition,
+    // Restored pins carry an authoritative anchor-local position (their
+    // stored worldPosition came from a previous session's frame).
+    position_anchor_local: pin.anchorLocalPosition
+      ?? (worldToAnchorLocal ? worldToAnchorLocal(pin.worldPosition) : pin.worldPosition),
     rotation:             pin.worldRotation,
     confidence:           pin.confidence,
     bbox_cxcywh:          pin.bboxCxCyWH,

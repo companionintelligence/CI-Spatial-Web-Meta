@@ -23,8 +23,10 @@ import {
 } from '@iwsdk/core';
 
 import { appState }                  from './app/AppState.js';
+import { SpatialPin }                from './spatial/SpatialPin.js';
 import { SpatialPinManager }         from './spatial/SpatialPinManager.js';
 import { ScanAnchorRoot }            from './spatial/ScanAnchorRoot.js';
+import { ScanStorage }               from './spatial/ScanStorage.js';
 import { CvServerClient }            from './cv/CvServerClient.js';
 import { PipelineB }                 from './pipeline/PipelineB.js';
 import { runPipelineA }              from './pipeline/PipelineA.js';
@@ -72,17 +74,32 @@ const world = await World.create(container, {
 
 // ── Shared services ────────────────────────────────────────────────────────
 
-const pinManager = new SpatialPinManager({ mergeByTrackId: true });
-const cvClient   = new CvServerClient({ baseUrl: import.meta.env.VITE_CV_BASE_URL ?? '' });
-const scanRoot   = new ScanAnchorRoot(world);
+const pinManager  = new SpatialPinManager({ mergeByTrackId: true });
+const cvClient    = new CvServerClient({ baseUrl: import.meta.env.VITE_CV_BASE_URL ?? '' });
+const scanRoot    = new ScanAnchorRoot(world);
+const scanStorage = new ScanStorage();
+
+// Filled in by CompanionScanSystem.init (the system owns the snapshot store).
+const scanHooks = { clearGeometry: null };
+
+function clearScan() {
+  pinManager.clearAll();
+  scanHooks.clearGeometry?.();
+  scanStorage.clear();
+  appState.setStatus('Scan cleared', 'info');
+}
 
 // Desktop / pre-AR status panel (auto-hides while presenting)
 const desktopOverlay = new DesktopOverlay({
   pinManager,
   cvClient,
   onDownload: () => downloadGlb(scanRoot, pinManager),
+  onClear:    clearScan,
 });
 desktopOverlay.init(world);
+
+// Debug / test hook (used by Playwright and chrome://inspect on-device)
+window.__companionScan = { pinManager, appState, scanRoot, scanStorage, clearScan, SpatialPin };
 
 // ── CompanionScanSystem ────────────────────────────────────────────────────
 //
@@ -111,8 +128,14 @@ class CompanionScanSystem extends createSystem({
     this._wristHUD      = new WristHUD(this.world, pinManager);
     this._geomSnapshot  = new SceneGeometrySnapshot(scanRoot);
     this._gltfSync      = new GltfSyncClient(cvClient);
+    scanHooks.clearGeometry = () => this._geomSnapshot.clear();
 
     this._viewfinder.init(this._cameraEntity);
+
+    // Restore a previous scan (after the label renderer subscribes, so the
+    // restored pins get their 3D labels rebuilt).
+    const restored = scanStorage.restore(pinManager);
+    if (restored) appState.setStatus(`Restored ${restored} pins`, 'info');
 
     // Keep label renderer in sync with display mode
     this._labelRenderer.setDisplayMode(appState.displayMode);
@@ -142,6 +165,7 @@ class CompanionScanSystem extends createSystem({
       this._viewfinder.unbind();
       this._hudReady  = false;
       this._menuReady = false;
+      scanStorage.save(pinManager, scanRoot);
     });
 
     // ── WebGL context loss ────────────────────────────────────────────────
@@ -262,6 +286,7 @@ class CompanionScanSystem extends createSystem({
       console.error('[CompanionScan] Capture failed:', err);
       appState.setStatus(`Capture failed: ${err?.message ?? err}`, 'error');
     } finally {
+      scanStorage.save(pinManager, scanRoot);
       appState.setBusy(false);
       this._capturing = false;
     }

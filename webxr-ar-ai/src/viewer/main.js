@@ -241,11 +241,55 @@ window.addEventListener('drop', (e) => {
   if (file) loadFile(file);
 });
 
+// ── Server scans (CV server glTF store, via the dev-server /v1 proxy) ──────
+
+async function refreshServerScans() {
+  const list = document.getElementById('server-scans');
+  try {
+    const res = await fetch('/v1/gltf');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { files = [] } = await res.json();
+
+    list.innerHTML = '';
+    if (!files.length) {
+      list.innerHTML = '<li class="note">No scans on server yet</li>';
+      return;
+    }
+    for (const f of files) {
+      const li = document.createElement('li');
+      const kb = Math.max(1, Math.round(f.bytes / 1024));
+      const when = f.modified ? new Date(f.modified).toLocaleString() : '';
+      li.innerHTML = `<span>${f.name}</span><span class="meta">${kb} KB · ${when}</span>`;
+      li.title = f.name;
+      li.addEventListener('click', () => loadServerScan(f.name));
+      list.appendChild(li);
+    }
+  } catch {
+    list.innerHTML = '<li class="note">CV server unreachable</li>';
+  }
+}
+
+async function loadServerScan(name) {
+  try {
+    const res = await fetch(`/v1/gltf/${encodeURIComponent(name)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    await loadGlb(await res.arrayBuffer());
+  } catch (err) {
+    console.error('[Viewer] Failed to load server scan:', err);
+    document.getElementById('scan-stats').innerHTML =
+      `<tr><td colspan="2" style="color:#ff6655">Failed to load ${name}: ${err?.message ?? err}</td></tr>`;
+  }
+}
+
+document.getElementById('scan-refresh').addEventListener('click', refreshServerScans);
+refreshServerScans();
+
 // ── Test hook ──────────────────────────────────────────────────────────────
 
 window.__companionViewer = {
   loadGlb,
   loadScan,
+  refreshServerScans,
   getState: () => ({
     pinCount: currentScan?.pins?.length ?? 0,
     hasContent: !!contentGroup && contentGroup.children.length > 0,

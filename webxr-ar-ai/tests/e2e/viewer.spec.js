@@ -64,6 +64,50 @@ test.describe('Scan viewer page', () => {
     expect(state.hasContent).toBe(true);
   });
 
+  test('shows "CV server unreachable" when the glTF store is offline', async ({ page }) => {
+    await expect(page.locator('#server-scans')).toContainText(/unreachable/i, {
+      timeout: 15_000,
+    });
+  });
+
+  test('lists server scans and loads one on click', async ({ page }) => {
+    // Build a real GLB in-page (the server is not running in CI)
+    const glbBase64 = await page.evaluate(async (scan) => {
+      const THREE = await import('/node_modules/three/build/three.module.js');
+      const { GLTFExporter } = await import(
+        '/node_modules/three/examples/jsm/exporters/GLTFExporter.js'
+      );
+      const root = new THREE.Group();
+      root.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), new THREE.MeshBasicMaterial()));
+      root.userData.companion_scan = scan;
+      const glb = await new Promise((resolve, reject) => {
+        new GLTFExporter().parse(root, resolve, reject, { binary: true, onlyVisible: false });
+      });
+      // ArrayBuffer → base64 for transport back to the test runner
+      let bin = '';
+      const bytes = new Uint8Array(glb);
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      return btoa(bin);
+    }, SAMPLE_SCAN);
+
+    // Mock the CV server's glTF store endpoints
+    await page.route('**/v1/gltf', route => route.fulfill({
+      json: { files: [{ name: 'scan-a.glb', bytes: 2048, modified: '2026-06-11T12:00:00Z' }] },
+    }));
+    await page.route('**/v1/gltf/scan-a.glb', route => route.fulfill({
+      contentType: 'model/gltf-binary',
+      body: Buffer.from(glbBase64, 'base64'),
+    }));
+
+    await page.click('#scan-refresh');
+    const item = page.locator('#server-scans li', { hasText: 'scan-a.glb' });
+    await expect(item).toBeVisible();
+
+    await item.click();
+    await expect(page.locator('#pin-list li')).toHaveCount(2);
+    await expect(page.locator('#scan-stats')).toContainText('anchor-e2e-uuid');
+  });
+
   test('round-trips a real GLB produced by the app exporter', async ({ page }) => {
     // Build a GLB in-page using the same three.js GLTFExporter the app uses,
     // with the companion_scan block in userData (mirrors GltfExporter.js).

@@ -27,6 +27,14 @@ export class SpatialPin {
     this.worldPosition = { x: 0, y: 0, z: 0 };
     /** @type {{x:number,y:number,z:number,w:number}} */
     this.worldRotation = { x: 0, y: 0, z: 0, w: 1 };
+    /**
+     * Position relative to the persistent anchor. Null for pins created this
+     * session (computed from worldPosition at export time); set on pins
+     * restored from storage, whose stored worldPosition belongs to a previous
+     * session's coordinate frame.
+     * @type {{x:number,y:number,z:number}|null}
+     */
+    this.anchorLocalPosition = null;
 
     // ── Detection metadata ───────────────────────────────────────────────────
     /** @type {number} */

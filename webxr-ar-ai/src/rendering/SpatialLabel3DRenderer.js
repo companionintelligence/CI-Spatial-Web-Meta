@@ -94,12 +94,21 @@ export class SpatialLabel3DRenderer {
   // ── Private ───────────────────────────────────────────────────────────────
 
   _setTransform(group, pin) {
-    // Pins store world-space poses; the group lives under the anchored scan
-    // root, so convert into parent-local space.
-    this._parent.updateWorldMatrix(true, false);
-    this._tmpVec.set(pin.worldPosition.x, pin.worldPosition.y, pin.worldPosition.z);
-    this._parent.worldToLocal(this._tmpVec);
-    group.position.copy(this._tmpVec);
+    // Restored pins are authoritative in anchor-local space (the group's
+    // parent frame); fresh pins store world-space poses that must be
+    // converted into parent-local space.
+    if (pin.anchorLocalPosition) {
+      group.position.set(
+        pin.anchorLocalPosition.x,
+        pin.anchorLocalPosition.y,
+        pin.anchorLocalPosition.z,
+      );
+    } else {
+      this._parent.updateWorldMatrix(true, false);
+      this._tmpVec.set(pin.worldPosition.x, pin.worldPosition.y, pin.worldPosition.z);
+      this._parent.worldToLocal(this._tmpVec);
+      group.position.copy(this._tmpVec);
+    }
 
     const q = pin.worldRotation;
     this._tmpQuat.set(q.x, q.y, q.z, q.w);

@@ -36,6 +36,19 @@
       aside h2:first-child { margin-top: 0; }
       #scan-stats td { padding: 2px 0; vertical-align: top; font-size: 12px; }
       #scan-stats td:first-child { color: #9aa0a8; width: 84px; }
+      aside h2 button {
+        background: none; border: none; color: #9ec3ff; cursor: pointer;
+        font-size: 13px; padding: 0 4px;
+      }
+      #server-scans { list-style: none; margin-bottom: 4px; }
+      #server-scans li {
+        padding: 5px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 2px;
+        display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+      }
+      #server-scans li:hover { background: rgba(255,255,255,0.07); }
+      #server-scans li.note { color: #9aa0a8; cursor: default; font-size: 12px; }
+      #server-scans li.note:hover { background: none; }
+      #server-scans .meta { color: #9aa0a8; font-size: 11px; white-space: nowrap; }
       #pin-list { list-style: none; }
       #pin-list li {
         padding: 6px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 2px;
@@ -63,6 +76,8 @@
       <span class="hint">…or drag &amp; drop a companion-scan .glb anywhere</span>
     </header>
     <aside>
+      <h2>Server scans <button id="scan-refresh" title="Refresh">⟳</button></h2>
+      <ul id="server-scans"><li class="note">Checking server…</li></ul>
       <h2>Scan</h2>
       <table id="scan-stats"><tr><td colspan="2" id="empty-note">No scan loaded</td></tr></table>
       <h2>Pins</h2>

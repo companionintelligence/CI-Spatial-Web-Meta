@@ -68,11 +68,13 @@ export class DesktopOverlay {
    * @param {import('../spatial/SpatialPinManager.js').SpatialPinManager} deps.pinManager
    * @param {import('../cv/CvServerClient.js').CvServerClient} deps.cvClient
    * @param {() => Promise<string>} deps.onDownload  triggers a local GLB download
+   * @param {() => void} [deps.onClear]  clears pins, geometry snapshots, and storage
    */
-  constructor({ pinManager, cvClient, onDownload }) {
+  constructor({ pinManager, cvClient, onDownload, onClear = null }) {
     this.pinManager = pinManager;
     this.cvClient   = cvClient;
     this.onDownload = onDownload;
+    this.onClear    = onClear;
     this._root       = null;
     this._healthTimer = 0;
   }
@@ -103,6 +105,7 @@ export class DesktopOverlay {
       <div class="co-section">
         <button id="co-download">Download GLB</button>
         <button id="co-viewer">Open Viewer</button>
+        <button id="co-clear">Clear Scan</button>
         <div id="co-status-line"></div>
       </div>
     `;
@@ -113,6 +116,9 @@ export class DesktopOverlay {
     this._root.querySelector('#co-viewer').addEventListener('click', () => {
       window.open('/viewer.html', '_blank');
     });
+    const clearBtn = this._root.querySelector('#co-clear');
+    if (this.onClear) clearBtn.addEventListener('click', () => this.onClear());
+    else clearBtn.remove();
 
     // ── Live data ─────────────────────────────────────────────────────────
     const refreshPins = () => this._refreshPins();
