@@ -101,15 +101,13 @@ export class PipelineB {
    * @param {string} captureId
    * @param {Array<{object: THREE.Object3D, hitType: 'plane'|'mesh'}>} raycastTargets
    *        collected via collectRaycastTargets() from the caller's queries
-   * @returns {Promise<{pins: SpatialPin[], rays: Array<{origin: THREE.Vector3, dir: THREE.Vector3}>}>}
+   * @returns {Promise<{pins: SpatialPin[], rays: Array<{origin: THREE.Vector3, dir: THREE.Vector3}>, error?: string}>}
    */
   async capture(captureId, raycastTargets = []) {
-    const empty = { pins: [], rays: [] };
-
     const videoEl = this._cameraEntity?.getValue(CameraSource, 'videoElement');
     if (!videoEl || videoEl.readyState < 2) {
       console.warn('[PipelineB] Camera not ready');
-      return empty;
+      return { pins: [], rays: [], error: 'Camera not ready' };
     }
 
     // Freeze the viewer pose at the same moment the frame is sampled —
@@ -128,7 +126,7 @@ export class PipelineB {
       detections = await this._runModels(base64, videoEl);
     } catch (err) {
       console.error('[PipelineB] CV server error:', err);
-      return empty;
+      return { pins: [], rays: [], error: String(err?.message ?? err) };
     }
 
     // ── Place pins via local scene raycast from the snapshotted pose ────────

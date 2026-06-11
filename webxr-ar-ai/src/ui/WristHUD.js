@@ -2,26 +2,39 @@
  * WristHUD — small world-space status panel attached to the left controller wrist.
  *
  * Displays:
- *   Model: Florence | GDino | SAM2
+ *   Model:   Florence | GDino | SAM2
  *   Display: BoundingBox2D | SpatialLabel3D | Both
  *   Preview: Near (1m) | Far (3m) | Off
- *   BUSY…  ← shown while a capture is running
+ *   Pins:    <cv> cv · <scene> scene
+ *   status line (capture/export results, errors)  — or BUSY… while capturing
  *
  * Attached to world.input.xrOrigin.gripSpaces.left.
  */
 
 import * as THREE from 'three';
 import { appState } from '../app/AppState.js';
+import { PinSource } from '../spatial/SpatialPin.js';
 
 const HUD_WIDTH  = 0.14;   // metres
-const HUD_HEIGHT = 0.08;   // metres
+const HUD_HEIGHT = 0.10;   // metres
 const CANVAS_W   = 420;
-const CANVAS_H   = 240;
+const CANVAS_H   = 300;
+
+const STATUS_COLOR = {
+  info:  '#cccccc',
+  ok:    '#2ecc71',
+  warn:  '#f1c40f',
+  error: '#ff5544',
+};
 
 export class WristHUD {
-  /** @param {import('@iwsdk/core').World} world */
-  constructor(world) {
-    this.world   = world;
+  /**
+   * @param {import('@iwsdk/core').World} world
+   * @param {import('../spatial/SpatialPinManager.js').SpatialPinManager} [pinManager]
+   */
+  constructor(world, pinManager = null) {
+    this.world      = world;
+    this.pinManager = pinManager;
     this._canvas = null;
     this._ctx    = null;
     this._tex    = null;
@@ -30,6 +43,13 @@ export class WristHUD {
 
     // React to state changes
     appState.subscribe(() => { this._dirty = true; });
+    if (pinManager) {
+      const markDirty = () => { this._dirty = true; };
+      pinManager.addEventListener('add',    markDirty);
+      pinManager.addEventListener('update', markDirty);
+      pinManager.addEventListener('remove', markDirty);
+      pinManager.addEventListener('clear',  markDirty);
+    }
   }
 
   /**
@@ -97,11 +117,12 @@ export class WristHUD {
       { label: 'Model:',   value: appState.modelPreset },
       { label: 'Display:', value: appState.displayMode },
       { label: 'Preview:', value: appState.previewDistanceLabel() },
+      { label: 'Pins:',    value: this._pinSummary() },
     ];
 
     ctx.font      = 'bold 28px sans-serif';
-    const lineH   = 56;
-    const startY  = 48;
+    const lineH   = 52;
+    const startY  = 44;
     rows.forEach(({ label, value }, i) => {
       const y = startY + i * lineH;
       ctx.fillStyle = 'rgba(255,255,255,0.55)';
@@ -110,13 +131,28 @@ export class WristHUD {
       ctx.fillText(value, 160, y);
     });
 
-    // BUSY indicator
+    // Bottom line: BUSY indicator wins over the status message
     if (appState.isBusy) {
       ctx.fillStyle = '#ff8800';
       ctx.font      = 'bold 30px sans-serif';
-      ctx.fillText('BUSY…', W / 2 - 50, H - 20);
+      ctx.fillText('BUSY…', 16, H - 20);
+    } else if (appState.status.text) {
+      ctx.fillStyle = STATUS_COLOR[appState.status.level] ?? STATUS_COLOR.info;
+      ctx.font      = 'bold 24px sans-serif';
+      ctx.fillText(_truncate(appState.status.text, 30), 16, H - 20);
     }
 
     if (this._tex) this._tex.needsUpdate = true;
   }
+
+  _pinSummary() {
+    if (!this.pinManager) return '—';
+    const cv    = this.pinManager.bySource(PinSource.CvServer).length;
+    const scene = this.pinManager.bySource(PinSource.MetaScene).length;
+    return `${cv} cv · ${scene} scene`;
+  }
+}
+
+function _truncate(text, max) {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }

@@ -44,31 +44,35 @@ export async function exportGltf(exportRoot, pinManager, opts = {}) {
   const pins  = pinManager.pins.map(p => _serialisePin(p, worldToAnchorLocal));
   const floor = _computeFloorplan(pinManager);
 
-  const extras = {
-    companion_scan: {
-      version:      '1.1',
-      session_id:   appState.captureSessionId,
-      exported_at:  new Date().toISOString(),
-      anchor_uuid:  anchorUuid,
-      pins,
-      floorplan:    floor,
-    },
+  const scanMeta = {
+    version:      '1.1',
+    session_id:   appState.captureSessionId,
+    exported_at:  new Date().toISOString(),
+    anchor_uuid:  anchorUuid,
+    pins,
+    floorplan:    floor,
   };
 
-  // Inject extras onto the root object (GLTFExporter reads userData.gltfExtras)
-  const prevExtras = exportRoot.userData.gltfExtras;
-  exportRoot.userData.gltfExtras = extras;
+  // GLTFExporter serialises the entire userData object into the node's
+  // `extras`, so the GLB carries `extras.companion_scan` directly.
+  const prevMeta = exportRoot.userData.companion_scan;
+  exportRoot.userData.companion_scan = scanMeta;
+
+  const restore = () => {
+    if (prevMeta === undefined) delete exportRoot.userData.companion_scan;
+    else exportRoot.userData.companion_scan = prevMeta;
+  };
 
   return new Promise((resolve, reject) => {
     exporter.parse(
       exportRoot,
       gltf => {
-        exportRoot.userData.gltfExtras = prevExtras;
+        restore();
         // parse returns an ArrayBuffer (binary glTF = GLB) when binary: true
         resolve(gltf);
       },
       err => {
-        exportRoot.userData.gltfExtras = prevExtras;
+        restore();
         reject(err);
       },
       // onlyVisible: false — geometry snapshots are kept invisible so they

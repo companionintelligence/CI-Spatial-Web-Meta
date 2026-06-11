@@ -75,6 +75,12 @@ The app requests `immersive-ar` automatically (with `plane-detection`, `mesh-det
 
 **Optional camera calibration:** the passthrough camera's horizontal FOV defaults to 80° and can be tuned per device with a URL parameter, e.g. `https://<PC-IP>:8081/?hfov=75`. If pins land short of / past object edges consistently, adjust this value.
 
+## Desktop tools
+
+- **Status overlay** — the 2D page (desktop browser, or the Quest browser window before entering AR) shows live status: WebXR support, CV-server health, pin counts, the controller legend, and export buttons. It hides automatically while the immersive session is presenting.
+- **Local GLB download** — pressing Left **Y** in-headset (or **Download GLB** on the overlay) saves the scan to the device's Downloads folder *and* attempts the CV-server upload. A scan is never lost to an unreachable server.
+- **Scan viewer** — open `https://<PC-IP>:8081/viewer.html` on any desktop browser and drop in an exported `companion-scan-*.glb`. It renders the captured room geometry as wireframe, overlays every pin (click a pin in the sidebar to focus it), and shows the floorplan bounds, anchor UUID, and export metadata.
+
 ## Controller Button Map
 
 | Button | Colour | Action |
@@ -91,7 +97,8 @@ The app requests `immersive-ar` automatically (with `plane-detection`, `mesh-det
 Model:   Florence
 Display: Both
 Preview: Near (1m)
-BUSY…       ← during capture
+Pins:    12 cv · 8 scene
+4 detections · 8 scene pins   ← status line (green/yellow/red); BUSY… during capture
 ```
 
 ## Project Structure
@@ -99,12 +106,16 @@ BUSY…       ← during capture
 ```
 webxr-ar-ai/
 ├── index.html
+├── viewer.html                       # Desktop scan viewer (drag & drop GLB)
 ├── vite.config.js
 ├── package.json
 ├── src/
 │   ├── main.js                       # Entry: World.create + system wiring + session lifecycle
+│   ├── viewer/
+│   │   ├── main.js                   # Viewer page: GLB load, pin rendering, sidebar
+│   │   └── scanParser.js             # Pure extras-parsing helpers
 │   ├── app/
-│   │   └── AppState.js               # Reactive singleton state
+│   │   └── AppState.js               # Reactive singleton state (incl. status line)
 │   ├── spatial/
 │   │   ├── SpatialPin.js             # Pin data class
 │   │   ├── SpatialPinManager.js      # Unified pin store (EventTarget)
@@ -124,10 +135,12 @@ webxr-ar-ai/
 │   │   └── ControllerInputSystem.js  # IWSDK ECS system for buttons
 │   ├── ui/
 │   │   ├── ControllerMenuBuilder.js  # Coloured disc indicators on controllers
-│   │   └── WristHUD.js               # Left-wrist canvas panel
+│   │   ├── WristHUD.js               # Left-wrist canvas panel (pins + status)
+│   │   └── DesktopOverlay.js         # DOM status panel for the 2D page
 │   └── export/
 │       ├── SceneGeometrySnapshot.js  # Plane/mesh geometry copies for export
 │       ├── GltfExporter.js           # GLTFExporter + spatial metadata extras
+│       ├── GltfDownload.js           # Local .glb download (headset Downloads)
 │       └── GltfSyncClient.js         # Upload GLB to /v1/gltf
 
 cv-server/

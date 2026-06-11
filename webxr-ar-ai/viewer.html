@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Companion Scan — Viewer</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { height: 100%; }
+      body {
+        background: #0c0e12; color: #e8e8e8;
+        font: 13px/1.5 system-ui, sans-serif;
+        display: grid;
+        grid-template-rows: 48px 1fr;
+        grid-template-columns: 320px 1fr;
+        grid-template-areas: "header header" "sidebar viewport";
+        height: 100dvh; overflow: hidden;
+      }
+      header {
+        grid-area: header; display: flex; align-items: center; gap: 16px;
+        padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,0.12);
+        background: #12151b;
+      }
+      header h1 { font-size: 15px; font-weight: 650; }
+      header .hint { color: #9aa0a8; font-size: 12px; }
+      header label {
+        background: #2a3242; border: 1px solid rgba(255,255,255,0.18);
+        border-radius: 8px; padding: 5px 12px; font-weight: 600; cursor: pointer;
+      }
+      header input[type="file"] { display: none; }
+      aside {
+        grid-area: sidebar; overflow-y: auto; background: #12151b;
+        border-right: 1px solid rgba(255,255,255,0.12); padding: 14px;
+      }
+      aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #9aa0a8; margin: 14px 0 6px; }
+      aside h2:first-child { margin-top: 0; }
+      #scan-stats td { padding: 2px 0; vertical-align: top; font-size: 12px; }
+      #scan-stats td:first-child { color: #9aa0a8; width: 84px; }
+      #pin-list { list-style: none; }
+      #pin-list li {
+        padding: 6px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 2px;
+        display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+      }
+      #pin-list li:hover { background: rgba(255,255,255,0.07); }
+      #pin-list .src-CvServer  { color: #2ecc71; }
+      #pin-list .src-MetaScene { color: #5599ff; }
+      #pin-list .meta { color: #9aa0a8; font-size: 11px; white-space: nowrap; }
+      #empty-note { color: #9aa0a8; font-size: 12px; }
+      main#viewport { grid-area: viewport; position: relative; }
+      main#viewport canvas { display: block; }
+      #dropzone {
+        position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        color: #9aa0a8; font-size: 15px; pointer-events: none; text-align: center;
+      }
+      #dropzone.hidden { display: none; }
+      body.dragging #dropzone { color: #9ec3ff; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Companion Scan Viewer</h1>
+      <label>Open GLB<input id="file-input" type="file" accept=".glb,.gltf,model/gltf-binary" /></label>
+      <span class="hint">…or drag &amp; drop a companion-scan .glb anywhere</span>
+    </header>
+    <aside>
+      <h2>Scan</h2>
+      <table id="scan-stats"><tr><td colspan="2" id="empty-note">No scan loaded</td></tr></table>
+      <h2>Pins</h2>
+      <ul id="pin-list"></ul>
+    </aside>
+    <main id="viewport">
+      <div id="dropzone">Drop a companion-scan&nbsp;.glb here</div>
+    </main>
+    <script type="module" src="/src/viewer/main.js"></script>
+  </body>
+</html>

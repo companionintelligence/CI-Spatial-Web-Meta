@@ -35,8 +35,10 @@ import { FrustumRenderer }           from './rendering/FrustumRenderer.js';
 import { ControllerInputSystem }     from './input/ControllerInputSystem.js';
 import { buildControllerMenu }       from './ui/ControllerMenuBuilder.js';
 import { WristHUD }                  from './ui/WristHUD.js';
+import { DesktopOverlay }            from './ui/DesktopOverlay.js';
 import { SceneGeometrySnapshot }     from './export/SceneGeometrySnapshot.js';
 import { GltfSyncClient }            from './export/GltfSyncClient.js';
+import { downloadGlb }               from './export/GltfDownload.js';
 
 // Target refresh rate for the immersive session (Hz).
 const TARGET_FRAME_RATE = 90;
@@ -74,6 +76,14 @@ const pinManager = new SpatialPinManager({ mergeByTrackId: true });
 const cvClient   = new CvServerClient({ baseUrl: import.meta.env.VITE_CV_BASE_URL ?? '' });
 const scanRoot   = new ScanAnchorRoot(world);
 
+// Desktop / pre-AR status panel (auto-hides while presenting)
+const desktopOverlay = new DesktopOverlay({
+  pinManager,
+  cvClient,
+  onDownload: () => downloadGlb(scanRoot, pinManager),
+});
+desktopOverlay.init(world);
+
 // ── CompanionScanSystem ────────────────────────────────────────────────────
 //
 // Defines queries for XRPlane and XRMesh so Pipeline A and the local
@@ -98,7 +108,7 @@ class CompanionScanSystem extends createSystem({
     this._viewfinder    = new CameraViewfinder(this.world);
     this._labelRenderer = new SpatialLabel3DRenderer(this.world, pinManager, scanRoot);
     this._frustum       = new FrustumRenderer(this.world);
-    this._wristHUD      = new WristHUD(this.world);
+    this._wristHUD      = new WristHUD(this.world, pinManager);
     this._geomSnapshot  = new SceneGeometrySnapshot(scanRoot);
     this._gltfSync      = new GltfSyncClient(cvClient);
 
@@ -225,8 +235,8 @@ class CompanionScanSystem extends createSystem({
       runPipelineA(planeEntities, meshEntities, pinManager, captureId, appState.captureSessionId);
 
       // Pipeline B — camera → CV server → local raycast against scene geometry
-      const targets  = collectRaycastTargets(planeEntities, meshEntities);
-      const { rays } = await this._pipelineB.capture(captureId, targets);
+      const targets = collectRaycastTargets(planeEntities, meshEntities);
+      const { pins, rays, error } = await this._pipelineB.capture(captureId, targets);
 
       // Frustum visualisation (rays already originate from the capture pose)
       if (appState.previewDistance > 0 && rays.length) {
@@ -239,8 +249,18 @@ class CompanionScanSystem extends createSystem({
         .filter(p => p.captureId === captureId);
       this._viewfinder.setOverlayData(overlayPins);
 
+      if (error) {
+        appState.setStatus(error, 'error');
+      } else {
+        const scenePins = pinManager
+          .bySource('MetaScene')
+          .filter(p => p.captureId === captureId).length;
+        appState.setStatus(`${pins.length} detections · ${scenePins} scene pins`, 'ok');
+      }
+
     } catch (err) {
       console.error('[CompanionScan] Capture failed:', err);
+      appState.setStatus(`Capture failed: ${err?.message ?? err}`, 'error');
     } finally {
       appState.setBusy(false);
       this._capturing = false;
@@ -252,10 +272,25 @@ class CompanionScanSystem extends createSystem({
   async _doExport() {
     if (appState.isBusy) return;
     appState.setBusy(true);
+
+    // Local download always works (Quest saves to the Downloads folder),
+    // so a scan is never lost to an unreachable CV server.
+    let filename = null;
     try {
-      await this._gltfSync.sync(scanRoot, pinManager);
+      filename = await downloadGlb(scanRoot, pinManager);
     } catch (err) {
-      console.error('[CompanionScan] Export failed:', err);
+      console.error('[CompanionScan] Local export failed:', err);
+    }
+
+    try {
+      const result = await this._gltfSync.sync(scanRoot, pinManager);
+      appState.setStatus(`Exported ${result.path ?? filename ?? 'scan'}`, 'ok');
+    } catch (err) {
+      console.error('[CompanionScan] Upload failed:', err);
+      appState.setStatus(
+        filename ? `Saved ${filename} · upload failed` : `Export failed: ${err?.message ?? err}`,
+        filename ? 'warn' : 'error',
+      );
     } finally {
       appState.setBusy(false);
     }

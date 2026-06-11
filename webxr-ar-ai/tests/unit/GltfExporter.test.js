@@ -49,19 +49,19 @@ describe('exportGltf — basic output', () => {
     expect(glb).toBeInstanceOf(ArrayBuffer);
   });
 
-  it('cleans up scene.userData.gltfExtras after export', async () => {
+  it('cleans up scene.userData.companion_scan after export', async () => {
     const scene = makeScene();
     const mgr = new SpatialPinManager();
     await exportGltf(scene, mgr);
-    expect(scene.userData.gltfExtras).toBeUndefined();
+    expect(scene.userData.companion_scan).toBeUndefined();
   });
 
-  it('restores previous gltfExtras after export', async () => {
+  it('restores previous companion_scan userData after export', async () => {
     const scene = makeScene();
-    scene.userData.gltfExtras = { prev: true };
+    scene.userData.companion_scan = { prev: true };
     const mgr = new SpatialPinManager();
     await exportGltf(scene, mgr);
-    expect(scene.userData.gltfExtras).toEqual({ prev: true });
+    expect(scene.userData.companion_scan).toEqual({ prev: true });
   });
 });
 
@@ -76,7 +76,7 @@ describe('exportGltf — extras structure', () => {
     // Intercept the extras by reading them from the scene mid-parse
     const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
     GLTFExporter.prototype.parse = function (scene, onDone) {
-      capturedExtras = JSON.parse(JSON.stringify(scene.userData.gltfExtras));
+      capturedExtras = JSON.parse(JSON.stringify({ companion_scan: scene.userData.companion_scan }));
       onDone(new ArrayBuffer(8));
     };
 
@@ -116,7 +116,7 @@ describe('exportGltf — extras structure', () => {
   it('includes anchor uuid and anchor-local positions when provided', async () => {
     const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
     GLTFExporter.prototype.parse = function (scene, onDone) {
-      capturedExtras = JSON.parse(JSON.stringify(scene.userData.gltfExtras));
+      capturedExtras = JSON.parse(JSON.stringify({ companion_scan: scene.userData.companion_scan }));
       onDone(new ArrayBuffer(8));
     };
 
@@ -139,7 +139,7 @@ describe('exportGltf — extras structure', () => {
   it('serialises all pin fields correctly', async () => {
     const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
     GLTFExporter.prototype.parse = function (scene, onDone) {
-      capturedExtras = JSON.parse(JSON.stringify(scene.userData.gltfExtras));
+      capturedExtras = JSON.parse(JSON.stringify({ companion_scan: scene.userData.companion_scan }));
       onDone(new ArrayBuffer(8));
     };
 
@@ -190,7 +190,7 @@ describe('exportGltf — floorplan computation', () => {
   async function captureExtras(mgr) {
     const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
     GLTFExporter.prototype.parse = function (scene, onDone) {
-      capturedExtras = JSON.parse(JSON.stringify(scene.userData.gltfExtras));
+      capturedExtras = JSON.parse(JSON.stringify({ companion_scan: scene.userData.companion_scan }));
       onDone(new ArrayBuffer(8));
     };
     await exportGltf(makeScene(), mgr);

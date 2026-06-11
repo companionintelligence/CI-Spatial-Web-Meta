@@ -143,14 +143,19 @@ WristHUD
 ## Export
 
 ```
-GltfSyncClient.sync(scanRoot, pinManager)
-  ├─ exportGltf(scanRoot.geometryRoot, pinManager, { anchorUuid, worldToAnchorLocal })
-  │    ├─ geometryRoot.userData.gltfExtras = { companion_scan: {...} }
-  │    └─ GLTFExporter.parse(..., { binary: true, onlyVisible: false }) → GLB
-  │       (geometry snapshots are invisible at runtime but ARE the payload;
-  │        labels / viewfinder / HUD are never exported)
-  └─ CvServerClient.uploadGltf(glb, filename) → POST /v1/gltf
+Left Y / overlay buttons
+  ├─ downloadGlb(scanRoot, pinManager)            ← always; headset Downloads folder
+  └─ GltfSyncClient.sync(scanRoot, pinManager)    ← upload; failure leaves a warn status
+
+exportGltf(scanRoot.geometryRoot, pinManager, { anchorUuid, worldToAnchorLocal })
+  ├─ geometryRoot.userData.companion_scan = {...}  → GLB `extras.companion_scan`
+  └─ GLTFExporter.parse(..., { binary: true, onlyVisible: false }) → GLB
+     (geometry snapshots are invisible at runtime but ARE the payload;
+      labels / viewfinder / HUD are never exported)
 ```
+
+Exports can be inspected on a desktop browser at `/viewer.html` (drag & drop
+the GLB): wireframe room geometry, pin markers, floorplan bounds, metadata.
 
 ## glTF Extras Structure
 

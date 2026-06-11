@@ -119,7 +119,7 @@ describe('PipelineB — capture() — no camera', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = await pb.capture('cap-test', []);
 
-    expect(result).toEqual({ pins: [], rays: [] });
+    expect(result).toEqual({ pins: [], rays: [], error: 'Camera not ready' });
     expect(cv.detect).not.toHaveBeenCalled();
     expect(warnSpy).toHaveBeenCalled();
   });
@@ -284,7 +284,7 @@ describe('PipelineB — model presets', () => {
     expect(mgr.pins[0].bboxCxCyWH[1]).toBeCloseTo(150 / 720, 4);
   });
 
-  it('handles CV server errors gracefully (no pins, empty result)', async () => {
+  it('handles CV server errors gracefully (no pins, error surfaced)', async () => {
     setPreset('GDino');
     const cv = { detect: vi.fn().mockRejectedValue(new Error('CV server down')) };
     const { pb, mgr } = makePipeline(cv);
@@ -292,7 +292,9 @@ describe('PipelineB — model presets', () => {
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     const result = await pb.capture('cap-fail', []);
 
-    expect(result).toEqual({ pins: [], rays: [] });
+    expect(result.pins).toHaveLength(0);
+    expect(result.rays).toHaveLength(0);
+    expect(result.error).toBe('CV server down');
     expect(mgr.pins).toHaveLength(0);
     expect(errorSpy).toHaveBeenCalled();
   });

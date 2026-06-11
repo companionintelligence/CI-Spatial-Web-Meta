@@ -43,6 +43,8 @@ class AppState {
     this.previewDistance = PreviewDistance.Near;
     this.isBusy          = false;
     this.captureSessionId = crypto.randomUUID?.() ?? String(Date.now());
+    /** @type {{text: string, level: 'info'|'ok'|'warn'|'error', at: number}} */
+    this.status = { text: '', level: 'info', at: 0 };
     /** @type {Set<Function>} */
     this._listeners = new Set();
   }
@@ -80,6 +82,17 @@ class AppState {
   setBusy(val) {
     this.isBusy = val;
     this._notify('isBusy');
+  }
+
+  /**
+   * Set the user-facing status line (shown on the WristHUD and the desktop
+   * overlay).
+   * @param {string} text
+   * @param {'info'|'ok'|'warn'|'error'} [level='info']
+   */
+  setStatus(text, level = 'info') {
+    this.status = { text, level, at: Date.now() };
+    this._notify('status');
   }
 
   previewDistanceLabel() {
