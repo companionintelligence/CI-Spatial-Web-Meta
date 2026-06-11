@@ -41,6 +41,18 @@ export class CvServerClient {
     return res.ok;
   }
 
+  // ── Models ───────────────────────────────────────────────────────────────
+
+  /**
+   * Fetch the server's model registry.
+   * @returns {Promise<{models: Array<{id:string,label:string,kind:string}>}>}
+   */
+  async models() {
+    const res = await this._get('/v1/models');
+    if (!res.ok) throw new Error(`models query failed: ${res.status}`);
+    return res.json();
+  }
+
   // ── Detect ───────────────────────────────────────────────────────────────
 
   /**
@@ -54,6 +66,7 @@ export class CvServerClient {
       prompt:         opts.prompt         ?? this.detectionPrompt,
       box_threshold:  opts.boxThreshold   ?? this.boxThreshold,
       text_threshold: opts.textThreshold  ?? this.textThreshold,
+      ...(opts.model ? { model: opts.model } : {}),
     });
   }
 

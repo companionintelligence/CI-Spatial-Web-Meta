@@ -1,0 +1,107 @@
+{
+  "home": "office_team",
+  "image_size": [
+    1280,
+    720
+  ],
+  "camera": {
+    "hfov_deg": 80,
+    "position": [
+      0,
+      1.6,
+      1.7
+    ],
+    "look_at": [
+      0,
+      1,
+      -2
+    ]
+  },
+  "detections": [
+    {
+      "label": "table",
+      "cx": 0.1679,
+      "cy": 0.8081,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.1679,
+        0.8081,
+        0.3358,
+        0.3735
+      ],
+      "world_position": {
+        "x": -1.6,
+        "y": 0.37,
+        "z": -1
+      }
+    },
+    {
+      "label": "table",
+      "cx": 0.8321,
+      "cy": 0.8081,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.8321,
+        0.8081,
+        0.3358,
+        0.3735
+      ],
+      "world_position": {
+        "x": 1.6,
+        "y": 0.37,
+        "z": -1
+      }
+    },
+    {
+      "label": "storage",
+      "cx": 0.5,
+      "cy": 0.6404,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.5,
+        0.6404,
+        0.2981,
+        0.3886
+      ],
+      "world_position": {
+        "x": 0,
+        "y": 0.6,
+        "z": -1.7
+      }
+    },
+    {
+      "label": "plant",
+      "cx": 0.9394,
+      "cy": 0.6196,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.9394,
+        0.6196,
+        0.1212,
+        0.4606
+      ],
+      "world_position": {
+        "x": 2.6,
+        "y": 0.7,
+        "z": -1.6
+      }
+    },
+    {
+      "label": "plant",
+      "cx": 0.0606,
+      "cy": 0.6196,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.0606,
+        0.6196,
+        0.1212,
+        0.4606
+      ],
+      "world_position": {
+        "x": -2.6,
+        "y": 0.7,
+        "z": -1.6
+      }
+    }
+  ]
+}

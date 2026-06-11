@@ -1,0 +1,73 @@
+{
+  "home": "dining",
+  "image_size": [
+    1280,
+    720
+  ],
+  "camera": {
+    "hfov_deg": 80,
+    "position": [
+      0,
+      1.6,
+      1.2
+    ],
+    "look_at": [
+      0,
+      1,
+      -1.5
+    ]
+  },
+  "detections": [
+    {
+      "label": "chair",
+      "cx": 0.3264,
+      "cy": 0.7801,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.3264,
+        0.7801,
+        0.1864,
+        0.4398
+      ],
+      "world_position": {
+        "x": -0.6,
+        "y": 0.475,
+        "z": -0.85
+      }
+    },
+    {
+      "label": "chair",
+      "cx": 0.6736,
+      "cy": 0.7801,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.6736,
+        0.7801,
+        0.1864,
+        0.4398
+      ],
+      "world_position": {
+        "x": 0.6,
+        "y": 0.475,
+        "z": -0.85
+      }
+    },
+    {
+      "label": "storage",
+      "cx": 0.5,
+      "cy": 0.7559,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.5,
+        0.7559,
+        0.3828,
+        0.3958
+      ],
+      "world_position": {
+        "x": 0,
+        "y": 0.425,
+        "z": -1.25
+      }
+    }
+  ]
+}

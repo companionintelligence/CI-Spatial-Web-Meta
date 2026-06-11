@@ -1,0 +1,56 @@
+{
+  "home": "kids_bedroom",
+  "image_size": [
+    1280,
+    720
+  ],
+  "camera": {
+    "hfov_deg": 80,
+    "position": [
+      0,
+      1.6,
+      1.0999999999999999
+    ],
+    "look_at": [
+      0,
+      1,
+      -1.4
+    ]
+  },
+  "detections": [
+    {
+      "label": "storage",
+      "cx": 0.8048,
+      "cy": 0.7604,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.8048,
+        0.7604,
+        0.2899,
+        0.4792
+      ],
+      "world_position": {
+        "x": 1.1,
+        "y": 0.5,
+        "z": -1
+      }
+    },
+    {
+      "label": "lamp",
+      "cx": 0.1814,
+      "cy": 0.8579,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.1814,
+        0.8579,
+        0.1056,
+        0.2336
+      ],
+      "world_position": {
+        "x": -1.3,
+        "y": 0.225,
+        "z": -1.1
+      }
+    }
+  ]
+}

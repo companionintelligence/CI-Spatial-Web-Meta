@@ -134,3 +134,45 @@ export async function getState(page) {
 export async function waitForAppReady(page, timeout = 15000) {
   await page.waitForFunction(() => window.__appReady === true, { timeout });
 }
+
+const SEM_BUNDLE = path.resolve(__dirname, '../../../node_modules/@iwer/sem/build/iwer-sem.min.js');
+
+/**
+ * Inject IWER plus the Synthetic Environment Module (@iwer/sem) and install
+ * both before any page script runs. Test homes can then be loaded with
+ * `loadHomeEnvironment(page, semJson)`.
+ *
+ * @param {import('@playwright/test').Page} page
+ */
+export async function installIwerWithSem(page) {
+  await page.addInitScript({ path: IWER_BUNDLE });
+  await page.addInitScript({ path: SEM_BUNDLE });
+  await page.addInitScript(`
+    (() => {
+      const { XRDevice, metaQuest3 } = window.IWER ?? {};
+      const sem = window.IWER_SEM;
+      if (!XRDevice || !sem) {
+        console.error('[test] IWER/SEM not loaded:', typeof window.IWER, typeof window.IWER_SEM);
+        return;
+      }
+      const device = new XRDevice(metaQuest3);
+      device.stereoEnabled = false;
+      device.installRuntime();
+      device.installSEM(sem.SyntheticEnvironmentModule);
+      window.__xrDevice = device;
+    })();
+  `);
+}
+
+/**
+ * Load a synthetic home environment into the emulated device. The
+ * SceneUnderstandingSystem picks the planes/meshes up on subsequent frames.
+ *
+ * @param {import('@playwright/test').Page} page
+ * @param {object} semJson  output of homeToSemJson()
+ */
+export async function loadHomeEnvironment(page, semJson) {
+  await page.evaluate((json) => {
+    window.__xrDevice.sem.loadEnvironment(json);
+  }, semJson);
+}

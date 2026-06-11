@@ -17,7 +17,7 @@ test.describe('Desktop overlay', () => {
   test('renders the status panel with title and legend', async ({ page }) => {
     const overlay = page.locator('#co-overlay');
     await expect(overlay).toBeVisible();
-    await expect(overlay.locator('h1')).toHaveText('Companion Scan');
+    await expect(overlay.locator('h1')).toHaveText('Companion Scan Quest');
     // Five controller legend rows
     await expect(overlay.locator('.co-key')).toHaveCount(5);
   });
@@ -28,10 +28,27 @@ test.describe('Desktop overlay', () => {
     });
   });
 
+  test('reports the CV server as online (mock backend)', async ({ page }) => {
+    await expect(page.locator('#co-cv-status')).toContainText(/online/i, {
+      timeout: 15_000,
+    });
+  });
+
   test('reports the CV server as offline when unreachable', async ({ page }) => {
+    await page.route('**/v1/health', route => route.abort());
+    await page.reload();
     await expect(page.locator('#co-cv-status')).toContainText(/offline/i, {
       timeout: 15_000,
     });
+  });
+
+  test('adopts the model registry from the CV server', async ({ page }) => {
+    await page.waitForFunction(
+      () => window.__companionScan?.appState?.models?.length === 4,
+      { timeout: 15_000 },
+    );
+    const models = await page.evaluate(() => window.__companionScan.appState.models);
+    expect(models).toContain('YoloWorld');
   });
 
   test('shows the capture session id and zero pin counts', async ({ page }) => {

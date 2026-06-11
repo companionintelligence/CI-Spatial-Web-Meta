@@ -1,14 +1,39 @@
-# Companion Scan
+# Companion Scan Quest
 
-Quest 3 local world/space mapper — combines **WebXR Scene Understanding** with a **local CV server** (Grounding DINO, SAM 2, Florence-2) to produce a glTF export (plus a Markdown scan report) with rich spatial metadata, re-localizable across sessions via a **persistent WebXR anchor**.
+**Companion Intelligence** · Quest 3 local world/space mapper — combines **WebXR Scene Understanding** with a **local CV server** (Grounding DINO, SAM 2, Florence-2) to produce a glTF export (plus a Markdown scan report) with rich spatial metadata, re-localizable across sessions via a **persistent WebXR anchor**.
 
 [![Scan loaded in the desktop viewer](docs/images/viewer-scan.png)](docs/tutorial-scan-your-home.md)
 
 📖 **New here? Follow the [step-by-step tutorial: scan your home into a 3D glTF](docs/tutorial-scan-your-home.md).**
+🏛️ System design, schema, and diagrams: [architecture.md](architecture.md).
 🧪 Testing on hardware? Use the [headset QA guide](docs/headset-testing.md).
 🔌 Component wiring details: [docs/quest-capture-gltf.md](docs/quest-capture-gltf.md).
 
+## User flow
+
+```mermaid
+flowchart LR
+    A["Open app on Quest<br/>(status overlay)"] --> B["Enter AR<br/>grant camera"]
+    B --> C{"Scene model<br/>exists?"}
+    C -- no --> D["Space Setup<br/>(auto-prompted)"] --> E
+    C -- yes --> E["Right A: Capture<br/>scene pins + AI detections"]
+    E --> E
+    E --> F["Left Y: Export<br/>.glb + .md + upload"]
+    F --> G["Desktop viewer/editor<br/>/viewer.html"]
+    G --> H["Edit pins → re-export<br/>GLB · JSON · report"]
+```
+
+| Step | Input | Output |
+|---|---|---|
+| Scan | Right **A** per view direction | Scene pins (walls/floor/furniture) + AI detections placed on real surfaces |
+| Tune | Right **B** (model) · Left **X** (preview) · Trigger (display) | Model from the server registry; display modes |
+| Export | Left **Y** | `companion-scan-<ts>.glb` + `.md` in Downloads, server upload |
+| Edit | Desktop viewer | Pin label/confidence/position/caption edits, deletes; GLB/JSON/report re-export |
+| Resume | Reload / next session | Pins restored (localStorage) + persistent-anchor re-localization |
+
 ## Architecture
+
+Full diagrams (mermaid), schema reference, and coordinate conventions live in **[architecture.md](architecture.md)**.
 
 ```
 Quest 3 Browser (webxr-ar-ai/)
@@ -85,7 +110,7 @@ The app requests `immersive-ar` automatically (with `plane-detection`, `mesh-det
 
 - **Status overlay** — the 2D page (desktop browser, or the Quest browser window before entering AR) shows live status: WebXR support, CV-server health, pin counts, the controller legend, and export buttons. It hides automatically while the immersive session is presenting.
 - **Local export** — pressing Left **Y** in-headset (or **Download GLB** on the overlay) saves **two artifacts** to the device's Downloads folder — the `.glb` and a Markdown scan report (`.md`) — and then attempts the CV-server upload. A scan is never lost to an unreachable server.
-- **Scan viewer** — open `https://<PC-IP>:8081/viewer.html` on any desktop browser and drop in an exported `companion-scan-*.glb`. It renders the captured room geometry as wireframe, overlays every pin (click a pin in the sidebar to focus it), and shows the floorplan bounds, anchor UUID, and export metadata.
+- **Scan viewer & editor** — open `https://<PC-IP>:8081/viewer.html` on any desktop browser: load scans from the CV server's store or drop in a `.glb`. Renders the room geometry + pins (click to focus), and edits pins (label, confidence, position, caption, delete) with live floorplan recompute — re-export as GLB, JSON metadata, or Markdown report. The **Sample home** picker loads any of the 24 fixture homes as editable test data, no headset needed.
 
 ## Controller Button Map
 
@@ -190,7 +215,7 @@ The GLB contains the snapshotted room geometry (anchor-relative transforms) and 
 | Scene Understanding | WebXR `plane-detection` + `mesh-detection` + `anchors` |
 | Raycast | Local `THREE.Raycaster` vs. scene-understanding geometry |
 | Camera | IWSDK `CameraSource` component |
-| AI models | Florence-2, GroundingDINO, SAM 2 (Docker) |
+| AI models | Florence-2, GroundingDINO, SAM 2 (Docker) — extensible via `/v1/models` registry |
 | Export | Three.js `GLTFExporter` |
 | Backend | FastAPI + Uvicorn (Docker) |
 
@@ -199,6 +224,13 @@ The GLB contains the snapshotted room geometry (anchor-relative transforms) and 
 ```bash
 cd webxr-ar-ai
 npm run test:unit    # Vitest unit tests
-npm run test:e2e     # Playwright + IWER (emulated Quest 3 WebXR runtime)
+npm run test:e2e     # Playwright + IWER/@iwer/sem (emulated Quest 3) + mock CV server
 npm run test:all
 ```
+
+The e2e suite scans **24 synthetic test homes** through the real WebXR
+plane/mesh-detection path (IWER synthetic environments — the same runtime
+behind Meta's immersive-web-emulator) and verifies CV-detection placement
+against rendered ground truth (`test-assets/cv/`). `cv-server/eval_images.py`
+scores the real models on the same frames. See
+[architecture.md](architecture.md#test-architecture).

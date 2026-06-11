@@ -1,0 +1,34 @@
+[
+  {
+    "home": "studio",
+    "detections": 2
+  },
+  {
+    "home": "one_bedroom",
+    "detections": 1
+  },
+  {
+    "home": "office_solo",
+    "detections": 0
+  },
+  {
+    "home": "office_team",
+    "detections": 5
+  },
+  {
+    "home": "kitchen",
+    "detections": 2
+  },
+  {
+    "home": "dining",
+    "detections": 3
+  },
+  {
+    "home": "kids_bedroom",
+    "detections": 2
+  },
+  {
+    "home": "gym",
+    "detections": 2
+  }
+]

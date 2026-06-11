@@ -38,6 +38,8 @@ const PREVIEW_CYCLE = [
 
 class AppState {
   constructor() {
+    /** Model ids available for cycling; replaced by the server registry at boot. */
+    this.models          = [...MODEL_CYCLE];
     this.modelPreset     = ModelPreset.Florence;
     this.displayMode     = DisplayMode.Both;
     this.previewDistance = PreviewDistance.Near;
@@ -59,10 +61,22 @@ class AppState {
   }
 
   cycleModel() {
-    const i = MODEL_CYCLE.indexOf(this.modelPreset);
-    this.modelPreset = MODEL_CYCLE[(i + 1) % MODEL_CYCLE.length];
+    const i = this.models.indexOf(this.modelPreset);
+    this.modelPreset = this.models[(i + 1) % this.models.length];
     this._notify('modelPreset');
     return this.modelPreset;
+  }
+
+  /**
+   * Replace the cycling model list with the server's registry (boot-time).
+   * Ignored when empty so an unreachable server keeps the static defaults.
+   * @param {string[]} ids
+   */
+  setModels(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    this.models = [...ids];
+    if (!this.models.includes(this.modelPreset)) this.modelPreset = this.models[0];
+    this._notify('models');
   }
 
   cycleDisplayMode() {

@@ -110,6 +110,9 @@ class DetectRequest(BaseModel):
     prompt: str = "object . person . chair . table . cup . bottle . door . screen"
     box_threshold: float = 0.35
     text_threshold: float = 0.25
+    # Detector id from MODEL_REGISTRY; GroundingDINO is the only detector
+    # currently wired, additional ids should branch here.
+    model: str | None = None
 
 
 class SegmentRequest(BaseModel):
@@ -137,6 +140,28 @@ async def health():
         "device": DEVICE,
         "cuda": torch.cuda.is_available(),
     }
+
+
+# ---------------------------------------------------------------------------
+# /v1/models — model registry
+# ---------------------------------------------------------------------------
+# To add a detector: append an entry here, add a lazy loader (see _gdino),
+# and branch on `req.model` in /v1/detect. Clients discover models at boot
+# and cycle through whatever this returns.
+
+MODEL_REGISTRY = [
+    {"id": "Florence", "label": "Florence-2", "kind": "caption+detect",
+     "endpoints": ["/v1/florence"]},
+    {"id": "GDino", "label": "GroundingDINO", "kind": "detect",
+     "endpoints": ["/v1/detect"]},
+    {"id": "SAM2", "label": "GroundingDINO + SAM 2", "kind": "detect+segment",
+     "endpoints": ["/v1/detect", "/v1/segment"]},
+]
+
+
+@app.get("/v1/models")
+async def list_models():
+    return {"models": MODEL_REGISTRY}
 
 
 # ---------------------------------------------------------------------------

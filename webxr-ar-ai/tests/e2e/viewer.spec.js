@@ -38,7 +38,7 @@ test.describe('Scan viewer page', () => {
   });
 
   test('loads with header, drop zone, and empty state', async ({ page }) => {
-    await expect(page.locator('header h1')).toHaveText('Companion Scan Viewer');
+    await expect(page.locator('header h1')).toHaveText('Companion Scan Quest');
     await expect(page.locator('#dropzone')).toBeVisible();
     await expect(page.locator('#empty-note')).toHaveText('No scan loaded');
     // Renderer canvas is mounted
@@ -81,6 +81,9 @@ test.describe('Scan viewer page', () => {
   });
 
   test('shows "CV server unreachable" when the glTF store is offline', async ({ page }) => {
+    await page.route('**/v1/gltf', route => route.abort());
+    await page.reload();
+    await page.waitForFunction(() => !!window.__companionViewer);
     await expect(page.locator('#server-scans')).toContainText(/unreachable/i, {
       timeout: 15_000,
     });
@@ -122,6 +125,76 @@ test.describe('Scan viewer page', () => {
     await item.click();
     await expect(page.locator('#pin-list li')).toHaveCount(2);
     await expect(page.locator('#scan-stats')).toContainText('anchor-e2e-uuid');
+  });
+
+  test('loads a sample home as editable test data', async ({ page }) => {
+    await page.selectOption('#sample-select', 'studio');
+    await expect(page.locator('#pin-list li')).toHaveCount(7);   // 1 room + 6 furniture
+    const state = await page.evaluate(() => window.__companionViewer.getState());
+    expect(state.pinCount).toBe(7);
+    expect(state.markerCount).toBe(7);
+    await expect(page.locator('#scan-stats')).toContainText('6 cv · 1 scene');
+  });
+
+  test('edits a pin: rename + confidence + position, floorplan recomputes', async ({ page }) => {
+    await page.selectOption('#sample-select', 'studio');
+    await page.evaluate(() => {
+      const scan = window.__companionViewer.getScan();
+      const pin = scan.pins.find(p => p.source === 'CvServer');
+      window.__companionViewer.selectPin(pin.id);
+    });
+    await expect(page.locator('#editor')).toBeVisible();
+
+    await page.fill('#pin-label', 'reading chair');
+    await page.fill('#pin-confidence', '0.55');
+    await page.fill('#pin-x', '9.5');
+    await page.click('#pin-apply');
+
+    await expect(page.locator('#pin-list li.selected')).toContainText('reading chair 55%');
+    const scan = await page.evaluate(() => window.__companionViewer.getScan());
+    const edited = scan.pins.find(p => p.label === 'reading chair');
+    expect(edited.position_anchor_local.x).toBe(9.5);
+    // Floorplan recomputed to include the moved pin
+    expect(scan.floorplan.bounds.max.x).toBe(9.5);
+  });
+
+  test('deletes a pin and filters by source', async ({ page }) => {
+    await page.selectOption('#sample-select', 'studio');
+    await page.evaluate(() => {
+      const pin = window.__companionViewer.getScan().pins.find(p => p.source === 'CvServer');
+      window.__companionViewer.selectPin(pin.id);
+    });
+    await page.click('#pin-delete');
+    await expect(page.locator('#pin-list li')).toHaveCount(6);
+
+    await page.uncheck('#filter-cv');
+    await expect(page.locator('#pin-list li')).toHaveCount(1);   // MetaScene floor only
+    await page.check('#filter-cv');
+    await expect(page.locator('#pin-list li')).toHaveCount(6);
+  });
+
+  test('exports edited scans as JSON and GLB', async ({ page }) => {
+    await page.selectOption('#sample-select', 'office_solo');
+    await page.evaluate(() => {
+      const pin = window.__companionViewer.getScan().pins.find(p => p.source === 'CvServer');
+      window.__companionViewer.selectPin(pin.id);
+    });
+    await page.fill('#pin-label', 'standing desk');
+    await page.click('#pin-apply');
+
+    // JSON export carries the edit
+    const jsonDl = page.waitForEvent('download');
+    await page.click('#json-btn');
+    const jsonFile = await jsonDl;
+    expect(jsonFile.suggestedFilename()).toMatch(/\.json$/);
+    const fs = await import('fs');
+    const exported = JSON.parse(fs.readFileSync(await jsonFile.path(), 'utf8'));
+    expect(exported.pins.some(p => p.label === 'standing desk')).toBe(true);
+
+    // GLB re-export downloads
+    const glbDl = page.waitForEvent('download');
+    await page.click('#glb-btn');
+    expect((await glbDl).suggestedFilename()).toMatch(/\.glb$/);
   });
 
   test('round-trips a real GLB produced by the app exporter', async ({ page }) => {

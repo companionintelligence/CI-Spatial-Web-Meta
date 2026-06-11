@@ -1,0 +1,56 @@
+{
+  "home": "kitchen",
+  "image_size": [
+    1280,
+    720
+  ],
+  "camera": {
+    "hfov_deg": 80,
+    "position": [
+      0,
+      1.6,
+      1.0999999999999999
+    ],
+    "look_at": [
+      0,
+      1,
+      -1.4
+    ]
+  },
+  "detections": [
+    {
+      "label": "storage",
+      "cx": 0.4089,
+      "cy": 0.7727,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.4089,
+        0.7727,
+        0.7288,
+        0.4547
+      ],
+      "world_position": {
+        "x": -0.3,
+        "y": 0.45,
+        "z": -1.05
+      }
+    },
+    {
+      "label": "storage",
+      "cx": 0.8656,
+      "cy": 0.5,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.8656,
+        0.5,
+        0.2689,
+        1
+      ],
+      "world_position": {
+        "x": 1.35,
+        "y": 1,
+        "z": -1
+      }
+    }
+  ]
+}
