@@ -98,6 +98,12 @@ const desktopOverlay = new DesktopOverlay({
 });
 desktopOverlay.init(world);
 
+// Adopt the CV server's model registry when reachable (silent fallback to
+// the static Florence/GDino/SAM2 cycle otherwise).
+cvClient.models()
+  .then(r => appState.setModels(r.models?.map(m => m.id)))
+  .catch(() => {});
+
 // Debug / test hook (used by Playwright and chrome://inspect on-device)
 window.__companionScan = { pinManager, appState, scanRoot, scanStorage, clearScan, SpatialPin };
 
@@ -327,3 +333,19 @@ class CompanionScanSystem extends createSystem({
 world
   .registerSystem(ControllerInputSystem)
   .registerSystem(CompanionScanSystem);
+
+// Debug hook completion: trigger a capture programmatically (Playwright /
+// on-device console) exactly as the controller button would, and drive the
+// detection-placement path directly with synthetic detections.
+window.__companionScan.runCapture = () =>
+  world.getSystem(CompanionScanSystem)?._doCapture();
+window.__companionScan.placeDetections = (captureId, detections) => {
+  const sys = world.getSystem(CompanionScanSystem);
+  if (!sys) return { pins: [], rays: [] };
+  const targets = collectRaycastTargets(
+    sys.queries.planeEntities.entities,
+    sys.queries.meshEntities.entities,
+  );
+  sys._pipelineB.snapshotPose();
+  return sys._pipelineB.placeDetections(captureId, detections, targets);
+};

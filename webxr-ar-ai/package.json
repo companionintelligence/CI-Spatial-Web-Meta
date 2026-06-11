@@ -1,5 +1,5 @@
 {
-  "name": "companion-scan",
+  "name": "companion-scan-quest",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -21,6 +21,7 @@
     "three": "^0.183.2"
   },
   "devDependencies": {
+    "@iwer/sem": "^0.2.5",
     "@playwright/test": "^1.58.2",
     "@vitest/coverage-v8": "^4.1.0",
     "iwer": "^2.1.1",

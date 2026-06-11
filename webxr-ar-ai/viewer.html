@@ -3,89 +3,136 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Companion Scan — Viewer</title>
+    <title>Companion Scan Quest — Viewer & Editor</title>
     <style>
+      /* ci.computer theming: light, minimal, black-on-white, gray accents */
+      :root {
+        --bg: #ffffff; --bg-2: #fafafa; --bg-3: #f1f1f1;
+        --text: #111111; --text-2: #6b6b6b;
+        --border: #e4e4e4; --accent: #111111;
+        --cv: #0a7d43; --scene: #2b5fd9; --warn: #b07d10; --error: #b3261e;
+      }
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { height: 100%; }
       body {
-        background: #0c0e12; color: #e8e8e8;
-        font: 13px/1.5 system-ui, sans-serif;
+        background: var(--bg); color: var(--text);
+        font: 13px/1.5 system-ui, -apple-system, sans-serif;
         display: grid;
-        grid-template-rows: 48px 1fr;
-        grid-template-columns: 320px 1fr;
+        grid-template-rows: 52px 1fr;
+        grid-template-columns: 340px 1fr;
         grid-template-areas: "header header" "sidebar viewport";
         height: 100dvh; overflow: hidden;
       }
       header {
-        grid-area: header; display: flex; align-items: center; gap: 16px;
-        padding: 0 16px; border-bottom: 1px solid rgba(255,255,255,0.12);
-        background: #12151b;
+        grid-area: header; display: flex; align-items: center; gap: 12px;
+        padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--bg);
       }
-      header h1 { font-size: 15px; font-weight: 650; }
-      header .hint { color: #9aa0a8; font-size: 12px; }
-      header label {
-        background: #2a3242; border: 1px solid rgba(255,255,255,0.18);
-        border-radius: 8px; padding: 5px 12px; font-weight: 600; cursor: pointer;
+      header .brand { display: flex; flex-direction: column; margin-right: 8px; }
+      header h1 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+      header .brand small { color: var(--text-2); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
+      header .hint { color: var(--text-2); font-size: 12px; margin-left: auto; }
+      header label, header button, header select {
+        background: var(--bg); border: 1px solid var(--text); color: var(--text);
+        border-radius: 8px; padding: 5px 12px; font: 600 12.5px system-ui, sans-serif;
+        cursor: pointer;
       }
+      header label:hover, header button:hover { background: var(--bg-3); }
       header input[type="file"] { display: none; }
       aside {
-        grid-area: sidebar; overflow-y: auto; background: #12151b;
-        border-right: 1px solid rgba(255,255,255,0.12); padding: 14px;
+        grid-area: sidebar; overflow-y: auto; background: var(--bg-2);
+        border-right: 1px solid var(--border); padding: 14px;
       }
-      aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: #9aa0a8; margin: 14px 0 6px; }
+      aside h2 {
+        font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
+        color: var(--text-2); margin: 16px 0 6px; display: flex; align-items: center; gap: 6px;
+      }
       aside h2:first-child { margin-top: 0; }
+      aside h2 button { background: none; border: none; color: var(--text); cursor: pointer; font-size: 13px; padding: 0 4px; }
       #scan-stats td { padding: 2px 0; vertical-align: top; font-size: 12px; }
-      #scan-stats td:first-child { color: #9aa0a8; width: 84px; }
-      aside h2 button {
-        background: none; border: none; color: #9ec3ff; cursor: pointer;
-        font-size: 13px; padding: 0 4px;
-      }
-      #server-scans { list-style: none; margin-bottom: 4px; }
-      #server-scans li {
-        padding: 5px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 2px;
-        display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
-      }
-      #server-scans li:hover { background: rgba(255,255,255,0.07); }
-      #server-scans li.note { color: #9aa0a8; cursor: default; font-size: 12px; }
-      #server-scans li.note:hover { background: none; }
-      #server-scans .meta { color: #9aa0a8; font-size: 11px; white-space: nowrap; }
-      #pin-list { list-style: none; }
-      #pin-list li {
+      #scan-stats td:first-child { color: var(--text-2); width: 84px; }
+      #filters label { margin-right: 12px; font-size: 12px; cursor: pointer; color: var(--text); }
+      ul { list-style: none; }
+      #server-scans li, #pin-list li {
         padding: 6px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 2px;
         display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
+        border: 1px solid transparent;
       }
-      #pin-list li:hover { background: rgba(255,255,255,0.07); }
-      #pin-list .src-CvServer  { color: #2ecc71; }
-      #pin-list .src-MetaScene { color: #5599ff; }
-      #pin-list .meta { color: #9aa0a8; font-size: 11px; white-space: nowrap; }
-      #empty-note { color: #9aa0a8; font-size: 12px; }
-      main#viewport { grid-area: viewport; position: relative; }
+      #server-scans li:hover, #pin-list li:hover { background: var(--bg-3); }
+      #pin-list li.selected { border-color: var(--text); background: var(--bg-3); }
+      li.note { color: var(--text-2); cursor: default; font-size: 12px; }
+      li.note:hover { background: none !important; }
+      .src-CvServer  { color: var(--cv); font-weight: 600; }
+      .src-MetaScene { color: var(--scene); font-weight: 600; }
+      .meta { color: var(--text-2); font-size: 11px; white-space: nowrap; }
+      #editor { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--bg); }
+      #editor.hidden { display: none; }
+      #editor .row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
+      #editor .row span { width: 70px; color: var(--text-2); font-size: 12px; }
+      #editor input {
+        flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 6px;
+        padding: 4px 6px; font: 12.5px system-ui, sans-serif; background: var(--bg);
+        color: var(--text);
+      }
+      #editor .actions { display: flex; gap: 8px; margin-top: 8px; }
+      #editor button {
+        border-radius: 8px; padding: 5px 12px; font: 600 12.5px system-ui, sans-serif;
+        cursor: pointer; border: 1px solid var(--text);
+      }
+      #pin-apply  { background: var(--accent); color: #fff; }
+      #pin-delete { background: var(--bg); color: var(--error); border-color: var(--error); }
+      main#viewport { grid-area: viewport; position: relative; background: var(--bg-3); }
       main#viewport canvas { display: block; }
       #dropzone {
         position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-        color: #9aa0a8; font-size: 15px; pointer-events: none; text-align: center;
+        color: var(--text-2); font-size: 15px; pointer-events: none; text-align: center;
       }
       #dropzone.hidden { display: none; }
-      body.dragging #dropzone { color: #9ec3ff; }
+      body.dragging #dropzone { color: var(--text); }
     </style>
   </head>
   <body>
     <header>
-      <h1>Companion Scan Viewer</h1>
+      <div class="brand">
+        <h1>Companion Scan Quest</h1>
+        <small>Companion Intelligence · Viewer &amp; Editor</small>
+      </div>
       <label>Open GLB<input id="file-input" type="file" accept=".glb,.gltf,model/gltf-binary" /></label>
-      <label id="report-btn" style="display:none">Download Report</label>
-      <span class="hint">…or drag &amp; drop a companion-scan .glb anywhere</span>
+      <select id="sample-select"><option value="">Sample home…</option></select>
+      <button id="report-btn" style="display:none">Report</button>
+      <button id="json-btn" style="display:none">Export JSON</button>
+      <button id="glb-btn" style="display:none">Export GLB</button>
+      <span class="hint">…or drag &amp; drop a companion-scan .glb</span>
     </header>
     <aside>
       <h2>Server scans <button id="scan-refresh" title="Refresh">⟳</button></h2>
       <ul id="server-scans"><li class="note">Checking server…</li></ul>
       <h2>Scan</h2>
       <table id="scan-stats"><tr><td colspan="2" id="empty-note">No scan loaded</td></tr></table>
+      <h2>Filters</h2>
+      <div id="filters">
+        <label><input type="checkbox" id="filter-cv" checked /> <span class="src-CvServer">Detections</span></label>
+        <label><input type="checkbox" id="filter-scene" checked /> <span class="src-MetaScene">Scene</span></label>
+      </div>
       <h2>Pins</h2>
       <ul id="pin-list"></ul>
+      <h2 id="editor-title" style="display:none">Edit pin</h2>
+      <div id="editor" class="hidden">
+        <div class="row"><span>Label</span><input id="pin-label" /></div>
+        <div class="row"><span>Confidence</span><input id="pin-confidence" type="number" min="0" max="1" step="0.01" /></div>
+        <div class="row"><span>Position</span>
+          <input id="pin-x" type="number" step="0.05" />
+          <input id="pin-y" type="number" step="0.05" />
+          <input id="pin-z" type="number" step="0.05" />
+        </div>
+        <div class="row"><span>Caption</span><input id="pin-caption" /></div>
+        <div class="actions">
+          <button id="pin-apply">Apply</button>
+          <button id="pin-delete">Delete</button>
+        </div>
+      </div>
     </aside>
     <main id="viewport">
-      <div id="dropzone">Drop a companion-scan&nbsp;.glb here</div>
+      <div id="dropzone">Drop a companion-scan&nbsp;.glb here — or pick a sample home above</div>
     </main>
     <script type="module" src="/src/viewer/main.js"></script>
   </body>

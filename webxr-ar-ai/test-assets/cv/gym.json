@@ -1,0 +1,56 @@
+{
+  "home": "gym",
+  "image_size": [
+    1280,
+    720
+  ],
+  "camera": {
+    "hfov_deg": 80,
+    "position": [
+      0,
+      1.6,
+      1.7
+    ],
+    "look_at": [
+      0,
+      1,
+      -2
+    ]
+  },
+  "detections": [
+    {
+      "label": "table",
+      "cx": 0.1948,
+      "cy": 0.8485,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.1948,
+        0.8485,
+        0.3283,
+        0.2434
+      ],
+      "world_position": {
+        "x": -1.4,
+        "y": 0.225,
+        "z": -1
+      }
+    },
+    {
+      "label": "storage",
+      "cx": 0.7965,
+      "cy": 0.6659,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.7965,
+        0.6659,
+        0.3711,
+        0.3759
+      ],
+      "world_position": {
+        "x": 1.6,
+        "y": 0.55,
+        "z": -1.6
+      }
+    }
+  ]
+}

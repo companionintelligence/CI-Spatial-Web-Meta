@@ -1,0 +1,56 @@
+{
+  "home": "studio",
+  "image_size": [
+    1280,
+    720
+  ],
+  "camera": {
+    "hfov_deg": 80,
+    "position": [
+      0,
+      1.6,
+      1.3
+    ],
+    "look_at": [
+      0,
+      1,
+      -1.6
+    ]
+  },
+  "detections": [
+    {
+      "label": "table",
+      "cx": 0.8009,
+      "cy": 0.8037,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.8009,
+        0.8037,
+        0.3608,
+        0.3927
+      ],
+      "world_position": {
+        "x": 1.2,
+        "y": 0.375,
+        "z": -1.1
+      }
+    },
+    {
+      "label": "plant",
+      "cx": 0.1233,
+      "cy": 0.6995,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.1233,
+        0.6995,
+        0.1703,
+        0.457
+      ],
+      "world_position": {
+        "x": -1.7,
+        "y": 0.55,
+        "z": -1.3
+      }
+    }
+  ]
+}

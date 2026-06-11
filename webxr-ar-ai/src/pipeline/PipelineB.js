@@ -112,14 +112,12 @@ export class PipelineB {
 
     // Freeze the viewer pose at the same moment the frame is sampled —
     // by the time the CV server responds, the head will have moved.
-    this.world.camera.getWorldPosition(this._capturePos);
-    this.world.camera.getWorldQuaternion(this._captureQuat);
+    this.snapshotPose();
     this._vfov = this._deriveVfov(
       (videoEl.videoWidth || 1280) / (videoEl.videoHeight || 720),
     );
 
     const base64 = await encodeVideoFrame(videoEl, 0.7);
-    const seq    = ++_captureSeq;
 
     let detections = [];
     try {
@@ -129,7 +127,27 @@ export class PipelineB {
       return { pins: [], rays: [], error: String(err?.message ?? err) };
     }
 
-    // ── Place pins via local scene raycast from the snapshotted pose ────────
+    return this.placeDetections(captureId, detections, raycastTargets);
+  }
+
+  /** Record the current viewer pose as the capture pose. */
+  snapshotPose() {
+    this.world.camera.getWorldPosition(this._capturePos);
+    this.world.camera.getWorldQuaternion(this._captureQuat);
+  }
+
+  /**
+   * Project detections from the snapshotted pose onto the scene geometry and
+   * create pins. Public so tests (and future detection sources) can exercise
+   * the placement path without a camera or CV round trip.
+   *
+   * @param {string} captureId
+   * @param {Array<object>} detections  normalised {label, cx, cy, confidence, …}
+   * @param {Array<{object: THREE.Object3D, hitType: 'plane'|'mesh'}>} raycastTargets
+   * @returns {{pins: SpatialPin[], rays: Array<{origin: THREE.Vector3, dir: THREE.Vector3}>}}
+   */
+  placeDetections(captureId, detections, raycastTargets = []) {
+    const seq  = ++_captureSeq;
     const pins = [];
     const rays = [];
     const fallbackDist =
@@ -204,10 +222,6 @@ export class PipelineB {
       });
     }
 
-    if (appState.modelPreset === ModelPreset.GDino) {
-      const resp = await this.cvClient.detect(base64);
-      return resp.detections ?? [];
-    }
 
     if (appState.modelPreset === ModelPreset.SAM2) {
       const detectResp = await this.cvClient.detect(base64);
@@ -222,7 +236,10 @@ export class PipelineB {
       }));
     }
 
-    return [];
+    // GDino and any future detector from the server registry: plain
+    // detection, with the model id forwarded for server-side routing.
+    const resp = await this.cvClient.detect(base64, { model: appState.modelPreset });
+    return resp.detections ?? [];
   }
 
   /**

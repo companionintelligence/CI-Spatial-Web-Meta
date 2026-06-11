@@ -22,7 +22,7 @@ const HEALTH_POLL_MS = 8000;
 
 const LEGEND = [
   ['Right A',  'Capture (both pipelines)'],
-  ['Right B',  'Cycle model — Florence → GDino → SAM2'],
+  ['Right B',  'Cycle CV model (from the server registry)'],
   ['Left X',   'Preview distance — 1 m → 3 m → Off'],
   ['Left Y',   'Save & Export (download + upload)'],
   ['Trigger',  'Display mode — BBox2D → Label3D → Both'],
@@ -32,33 +32,34 @@ const STYLE = `
 #co-overlay {
   position: fixed; top: 16px; left: 16px; z-index: 1000;
   width: 340px; max-height: calc(100dvh - 32px); overflow-y: auto;
-  background: rgba(12, 14, 18, 0.92); color: #e8e8e8;
-  border: 1px solid rgba(255,255,255,0.14); border-radius: 12px;
-  font: 13px/1.5 system-ui, sans-serif; padding: 16px;
-  backdrop-filter: blur(6px);
+  background: #ffffff; color: #111111;
+  border: 1px solid #e4e4e4; border-radius: 12px;
+  font: 13px/1.5 system-ui, -apple-system, sans-serif; padding: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10);
 }
 #co-overlay.co-hidden { display: none; }
-#co-overlay h1 { font-size: 16px; margin: 0 0 2px; }
-#co-overlay .co-sub { color: #9aa0a8; font-size: 12px; margin-bottom: 12px; }
+#co-overlay h1 { font-size: 16px; margin: 0; letter-spacing: -0.01em; }
+#co-overlay .co-brand { color: #6b6b6b; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 2px; }
+#co-overlay .co-sub { color: #6b6b6b; font-size: 12px; margin-bottom: 12px; }
 #co-overlay table { width: 100%; border-collapse: collapse; }
 #co-overlay td { padding: 3px 0; vertical-align: top; }
-#co-overlay td:first-child { color: #9aa0a8; width: 96px; }
-#co-overlay .co-section { margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px; }
+#co-overlay td:first-child { color: #6b6b6b; width: 96px; }
+#co-overlay .co-section { margin-top: 12px; border-top: 1px solid #ececec; padding-top: 10px; }
 #co-overlay .co-badge {
   display: inline-block; padding: 0 8px; border-radius: 8px;
   font-size: 12px; font-weight: 600;
 }
-.co-badge.ok    { background: #14432a; color: #2ecc71; }
-.co-badge.warn  { background: #4a3c10; color: #f1c40f; }
-.co-badge.error { background: #4a1714; color: #ff6655; }
-.co-badge.info  { background: #2a3242; color: #9ec3ff; }
-#co-overlay .co-key { color: #9ec3ff; font-weight: 600; white-space: nowrap; padding-right: 10px; }
+.co-badge.ok    { background: #e5f4ec; color: #0a7d43; }
+.co-badge.warn  { background: #faf3dc; color: #8a6207; }
+.co-badge.error { background: #fbe9e7; color: #b3261e; }
+.co-badge.info  { background: #eef1f6; color: #2b5fd9; }
+#co-overlay .co-key { color: #2b5fd9; font-weight: 600; white-space: nowrap; padding-right: 10px; }
 #co-overlay button {
-  background: #2a3242; color: #e8e8e8; border: 1px solid rgba(255,255,255,0.18);
+  background: #111111; color: #ffffff; border: 1px solid #111111;
   border-radius: 8px; padding: 6px 12px; font: 600 13px system-ui, sans-serif;
-  cursor: pointer; margin-right: 8px;
+  cursor: pointer; margin-right: 8px; margin-bottom: 6px;
 }
-#co-overlay button:hover { background: #36405494; }
+#co-overlay button:hover { background: #333333; }
 #co-status-line { min-height: 18px; margin-top: 8px; font-weight: 600; }
 `;
 
@@ -91,7 +92,8 @@ export class DesktopOverlay {
     this._root = document.createElement('div');
     this._root.id = 'co-overlay';
     this._root.innerHTML = `
-      <h1>Companion Scan</h1>
+      <div class="co-brand">Companion Intelligence</div>
+      <h1>Companion Scan Quest</h1>
       <div class="co-sub">Quest 3 world mapper — put on the headset and enter AR</div>
       <table>
         <tr><td>WebXR</td><td id="co-xr-status"><span class="co-badge info">Checking…</span></td></tr>
@@ -190,7 +192,7 @@ export class DesktopOverlay {
     if (!el) return;
     const { text, level } = appState.status;
     el.textContent = text;
-    el.style.color = { ok: '#2ecc71', warn: '#f1c40f', error: '#ff6655' }[level] ?? '#cccccc';
+    el.style.color = { ok: '#0a7d43', warn: '#8a6207', error: '#b3261e' }[level] ?? '#6b6b6b';
   }
 
   async _download() {

@@ -1,0 +1,39 @@
+{
+  "home": "one_bedroom",
+  "image_size": [
+    1280,
+    720
+  ],
+  "camera": {
+    "hfov_deg": 80,
+    "position": [
+      0,
+      1.6,
+      1.45
+    ],
+    "look_at": [
+      0,
+      1,
+      -1.75
+    ]
+  },
+  "detections": [
+    {
+      "label": "plant",
+      "cx": 0.8384,
+      "cy": 0.6817,
+      "confidence": 1,
+      "bbox_cxcywh": [
+        0.8384,
+        0.6817,
+        0.1546,
+        0.4706
+      ],
+      "world_position": {
+        "x": 1.6,
+        "y": 0.6,
+        "z": -1.3
+      }
+    }
+  ]
+}

@@ -44,14 +44,23 @@ export default defineConfig({
       },
     },
   ],
-  // Start a plain HTTP Vite dev server for E2E tests (no mkcert).
-  // The --port 4174 avoids clashing with the dev server on 8081.
-  webServer: {
-    command: 'npx vite --config vite.test.config.js',
-    url: 'http://127.0.0.1:4174',
-    reuseExistingServer: !process.env.CI,
-    timeout: 30_000,
-    stdout: 'ignore',
-    stderr: 'pipe',
-  },
+  // Start a plain HTTP Vite dev server for E2E tests (no mkcert), plus the
+  // mock CV server that the vite /v1 proxy forwards to — so the full capture
+  // and export paths run against a live (fake) backend.
+  webServer: [
+    {
+      command: 'npx vite --config vite.test.config.js',
+      url: 'http://127.0.0.1:4174',
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+      stdout: 'ignore',
+      stderr: 'pipe',
+    },
+    {
+      command: 'node tests/mocks/mock-cv-server.mjs 8000',
+      url: 'http://127.0.0.1:8000/v1/health',
+      reuseExistingServer: !process.env.CI,
+      timeout: 15_000,
+    },
+  ],
 });
