@@ -64,6 +64,22 @@ test.describe('Scan viewer page', () => {
     expect(state.hasContent).toBe(true);
   });
 
+  test('Download Report produces a Markdown report for the loaded scan', async ({ page }) => {
+    await page.evaluate((scan) => window.__companionViewer.loadScan(scan), SAMPLE_SCAN);
+    await expect(page.locator('#report-btn')).toBeVisible();
+
+    const downloadPromise = page.waitForEvent('download');
+    await page.click('#report-btn');
+    const download = await downloadPromise;
+
+    expect(download.suggestedFilename()).toMatch(/^companion-scan-report-.*\.md$/);
+    const path = await download.path();
+    const fs = await import('fs');
+    const md = fs.readFileSync(path, 'utf8');
+    expect(md).toContain('# Companion Scan Report');
+    expect(md).toContain('chair');
+  });
+
   test('shows "CV server unreachable" when the glTF store is offline', async ({ page }) => {
     await expect(page.locator('#server-scans')).toContainText(/unreachable/i, {
       timeout: 15_000,

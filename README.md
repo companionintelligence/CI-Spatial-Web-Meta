@@ -1,6 +1,12 @@
 # Companion Scan
 
-Quest 3 local world/space mapper — combines **WebXR Scene Understanding** with a **local CV server** (Grounding DINO, SAM 2, Florence-2) to produce a glTF export with rich spatial metadata, re-localizable across sessions via a **persistent WebXR anchor**.
+Quest 3 local world/space mapper — combines **WebXR Scene Understanding** with a **local CV server** (Grounding DINO, SAM 2, Florence-2) to produce a glTF export (plus a Markdown scan report) with rich spatial metadata, re-localizable across sessions via a **persistent WebXR anchor**.
+
+[![Scan loaded in the desktop viewer](docs/images/viewer-scan.png)](docs/tutorial-scan-your-home.md)
+
+📖 **New here? Follow the [step-by-step tutorial: scan your home into a 3D glTF](docs/tutorial-scan-your-home.md).**
+🧪 Testing on hardware? Use the [headset QA guide](docs/headset-testing.md).
+🔌 Component wiring details: [docs/quest-capture-gltf.md](docs/quest-capture-gltf.md).
 
 ## Architecture
 
@@ -78,7 +84,7 @@ The app requests `immersive-ar` automatically (with `plane-detection`, `mesh-det
 ## Desktop tools
 
 - **Status overlay** — the 2D page (desktop browser, or the Quest browser window before entering AR) shows live status: WebXR support, CV-server health, pin counts, the controller legend, and export buttons. It hides automatically while the immersive session is presenting.
-- **Local GLB download** — pressing Left **Y** in-headset (or **Download GLB** on the overlay) saves the scan to the device's Downloads folder *and* attempts the CV-server upload. A scan is never lost to an unreachable server.
+- **Local export** — pressing Left **Y** in-headset (or **Download GLB** on the overlay) saves **two artifacts** to the device's Downloads folder — the `.glb` and a Markdown scan report (`.md`) — and then attempts the CV-server upload. A scan is never lost to an unreachable server.
 - **Scan viewer** — open `https://<PC-IP>:8081/viewer.html` on any desktop browser and drop in an exported `companion-scan-*.glb`. It renders the captured room geometry as wireframe, overlays every pin (click a pin in the sidebar to focus it), and shows the floorplan bounds, anchor UUID, and export metadata.
 
 ## Controller Button Map

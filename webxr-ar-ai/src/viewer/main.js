@@ -14,6 +14,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { extractCompanionScan, pinDisplayPosition, summarizeScan } from './scanParser.js';
+import { buildScanReport } from '../export/ScanReport.js';
+import { saveBlob } from '../export/GltfDownload.js';
 
 const PIN_COLOR = { CvServer: 0x00ff50, MetaScene: 0x5599ff };
 const KIND_COLOR = { plane: 0x5599ff, mesh: 0x777788 };
@@ -125,6 +127,7 @@ function loadScan(scan, { keepContent = false } = {}) {
 
   _renderSidebar(scan);
   _frameContent();
+  document.getElementById('report-btn').style.display = '';
 }
 
 function _buildPinMarker(pin) {
@@ -227,6 +230,13 @@ async function loadFile(file) {
 document.getElementById('file-input').addEventListener('change', (e) => {
   const file = e.target.files?.[0];
   if (file) loadFile(file);
+});
+
+document.getElementById('report-btn').addEventListener('click', () => {
+  if (!currentScan) return;
+  const md = buildScanReport(currentScan);
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  saveBlob(new Blob([md], { type: 'text/markdown' }), `companion-scan-report-${ts}.md`);
 });
 
 window.addEventListener('dragover', (e) => {

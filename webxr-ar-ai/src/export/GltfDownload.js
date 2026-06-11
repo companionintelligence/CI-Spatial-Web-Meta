@@ -6,25 +6,32 @@
  * /viewer.html) without a reachable CV server.
  */
 
-import { exportGltf } from './GltfExporter.js';
+import { exportGltf, buildScanMeta } from './GltfExporter.js';
+import { buildScanReport } from './ScanReport.js';
 
 /**
- * Export the scan and trigger a browser download.
+ * Export the scan and trigger browser downloads for both artifacts:
+ * the GLB (geometry + machine-readable extras) and a Markdown report.
  *
  * @param {import('../spatial/ScanAnchorRoot.js').ScanAnchorRoot} scanRoot
  * @param {import('../spatial/SpatialPinManager.js').SpatialPinManager} pinManager
- * @returns {Promise<string>} the downloaded filename
+ * @returns {Promise<string>} the GLB filename
  */
 export async function downloadGlb(scanRoot, pinManager) {
-  const glb = await exportGltf(scanRoot.geometryRoot, pinManager, {
+  const opts = {
     anchorUuid:         scanRoot.anchorUuid,
     worldToAnchorLocal: p => scanRoot.worldToAnchorLocal(p),
-  });
+  };
+  const glb = await exportGltf(scanRoot.geometryRoot, pinManager, opts);
 
-  const ts       = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `companion-scan-${ts}.glb`;
-  saveBlob(new Blob([glb], { type: 'model/gltf-binary' }), filename);
-  return filename;
+  const ts   = new Date().toISOString().replace(/[:.]/g, '-');
+  const base = `companion-scan-${ts}`;
+  saveBlob(new Blob([glb], { type: 'model/gltf-binary' }), `${base}.glb`);
+
+  const report = buildScanReport(buildScanMeta(pinManager, opts));
+  saveBlob(new Blob([report], { type: 'text/markdown' }), `${base}.md`);
+
+  return `${base}.glb`;
 }
 
 /**

@@ -38,20 +38,7 @@ import { PinSource } from '../spatial/SpatialPin.js';
  */
 export async function exportGltf(exportRoot, pinManager, opts = {}) {
   const exporter = new GLTFExporter();
-  const { anchorUuid = null, worldToAnchorLocal = null } = opts;
-
-  // ── Build extras ─────────────────────────────────────────────────────────
-  const pins  = pinManager.pins.map(p => _serialisePin(p, worldToAnchorLocal));
-  const floor = _computeFloorplan(pinManager);
-
-  const scanMeta = {
-    version:      '1.1',
-    session_id:   appState.captureSessionId,
-    exported_at:  new Date().toISOString(),
-    anchor_uuid:  anchorUuid,
-    pins,
-    floorplan:    floor,
-  };
+  const scanMeta = buildScanMeta(pinManager, opts);
 
   // GLTFExporter serialises the entire userData object into the node's
   // `extras`, so the GLB carries `extras.companion_scan` directly.
@@ -80,6 +67,28 @@ export async function exportGltf(exportRoot, pinManager, opts = {}) {
       { binary: true, embedImages: false, onlyVisible: false },
     );
   });
+}
+
+/**
+ * Build the `companion_scan` metadata block (serialised pins + floorplan).
+ * Shared between the GLB extras and the Markdown scan report.
+ *
+ * @param {import('../spatial/SpatialPinManager.js').SpatialPinManager} pinManager
+ * @param {object}   [opts]
+ * @param {string|null} [opts.anchorUuid]
+ * @param {(p: {x,y,z}) => {x,y,z}} [opts.worldToAnchorLocal]
+ * @returns {object}
+ */
+export function buildScanMeta(pinManager, opts = {}) {
+  const { anchorUuid = null, worldToAnchorLocal = null } = opts;
+  return {
+    version:      '1.1',
+    session_id:   appState.captureSessionId,
+    exported_at:  new Date().toISOString(),
+    anchor_uuid:  anchorUuid,
+    pins:         pinManager.pins.map(p => _serialisePin(p, worldToAnchorLocal)),
+    floorplan:    _computeFloorplan(pinManager),
+  };
 }
 
 // ── Serialisation helpers ─────────────────────────────────────────────────

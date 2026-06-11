@@ -39,16 +39,18 @@ test.describe('Desktop overlay', () => {
     await expect(page.locator('#co-pins')).toHaveText('0 cv · 0 scene');
   });
 
-  test('Download GLB produces a companion-scan .glb download', async ({ page }) => {
+  test('Download GLB produces both .glb and .md scan artifacts', async ({ page }) => {
     // Wait for the app (and the overlay wiring) to be fully up
     await expect(page.locator('#co-overlay')).toBeVisible();
 
-    const downloadPromise = page.waitForEvent('download');
+    const downloads = [];
+    page.on('download', d => downloads.push(d.suggestedFilename()));
     await page.click('#co-download');
-    const download = await downloadPromise;
-
-    expect(download.suggestedFilename()).toMatch(/^companion-scan-.*\.glb$/);
     await expect(page.locator('#co-status-line')).toContainText(/^Saved companion-scan-/);
+    await expect.poll(() => downloads.length).toBe(2);
+
+    expect(downloads.find(f => /^companion-scan-.*\.glb$/.test(f))).toBeTruthy();
+    expect(downloads.find(f => /^companion-scan-.*\.md$/.test(f))).toBeTruthy();
   });
 
   test('hides while an immersive session is presenting', async ({ page }) => {
