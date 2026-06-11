@@ -1,6 +1,12 @@
 # Companion Scan
 
-Quest 3 local world/space mapper — combines **WebXR Scene Understanding** with a **local CV server** (Grounding DINO, SAM 2, Florence-2) to produce a glTF export with rich spatial metadata.
+Quest 3 local world/space mapper — combines **WebXR Scene Understanding** with a **local CV server** (Grounding DINO, SAM 2, Florence-2) to produce a glTF export (plus a Markdown scan report) with rich spatial metadata, re-localizable across sessions via a **persistent WebXR anchor**.
+
+[![Scan loaded in the desktop viewer](docs/images/viewer-scan.png)](docs/tutorial-scan-your-home.md)
+
+📖 **New here? Follow the [step-by-step tutorial: scan your home into a 3D glTF](docs/tutorial-scan-your-home.md).**
+🧪 Testing on hardware? Use the [headset QA guide](docs/headset-testing.md).
+🔌 Component wiring details: [docs/quest-capture-gltf.md](docs/quest-capture-gltf.md).
 
 ## Architecture
 
@@ -8,21 +14,25 @@ Quest 3 local world/space mapper — combines **WebXR Scene Understanding** with
 Quest 3 Browser (webxr-ar-ai/)
   ├─ Pipeline A: WebXR Scene Understanding
   │    XRPlane / XRMesh → SpatialPin (MetaScene)
+  │    (stable track IDs keyed on native plane/mesh identity)
   │
   ├─ Pipeline B: CV Server (network)
-  │    CameraSource → base64 JPEG
-  │    → Florence-2 caption + OD
-  │    → GroundingDINO detect
-  │    → SAM2 segment
-  │    → EnvironmentRaycastTarget (IWSDK)
-  │    → SpatialPin (CvServer)
+  │    1. snapshot viewer pose          ← frozen at frame-grab time
+  │    2. CameraSource → async JPEG     ← OffscreenCanvas, off main thread
+  │    3. Florence-2 / GroundingDINO / SAM2 (HTTP)
+  │    4. pinhole ray per detection     ← passthrough-camera intrinsics
+  │    5. SceneRaycaster                ← local raycast vs. scene geometry
+  │    6. SpatialPin (CvServer)         ← hit point, or fallback distance
   │
-  ├─ SpatialPinManager (unified pin store)
+  ├─ ScanAnchorRoot (persistent XRAnchor — scan content re-localizes)
+  │    ├─ geometryRoot: SceneGeometrySnapshot (plane/mesh copies → export)
+  │    └─ labelsRoot:   SpatialLabel3DRenderer (3D persistent labels)
+  ├─ SpatialPinManager (unified pin store, O(1) track-id index)
   ├─ ControllerInputSystem (Quest controller buttons)
-  ├─ CameraViewfinder (2D preview + BBox overlay)
-  ├─ SpatialLabel3DRenderer (3D persistent labels)
+  ├─ CameraViewfinder (2D preview + BBox overlay, 30 Hz texture upload)
   ├─ WristHUD (left-wrist status panel)
   └─ GltfExporter + GltfSyncClient → POST /v1/gltf
+       (exports geometryRoot only — anchor-relative, no UI meshes)
 
 Local CV Server (cv-server/ — Docker)
   POST /v1/detect   — GroundingDINO
@@ -31,6 +41,14 @@ Local CV Server (cv-server/ — Docker)
   POST /v1/gltf     — Upload
   GET  /v1/health
 ```
+
+### Key behaviours
+
+- **Capture-time pose snapshot** — detection rays are cast from the head pose at the moment the camera frame was grabbed, not where the head is seconds later when the CV server responds.
+- **Local scene raycast** — detections are projected onto the room geometry already captured by Scene Understanding (no per-detection XR hit-test sources, no async timeout). If nothing is hit, the pin is placed at a fallback distance along the ray — detections are never dropped.
+- **Persistent anchor** — all scan content lives under a root group bound to a persistent `XRAnchor` (UUID in localStorage). Exports carry both session-world and anchor-local coordinates plus the anchor UUID.
+- **Space Setup prompt** — if the session starts with no scene data, the app calls `session.initiateRoomCapture()` to launch the native Quest room-scan flow.
+- **Quest tuning** — fixed foveation 1.0 and a 90 Hz target frame rate are applied on session start; canvas textures skip mipmaps; the viewfinder uploads video frames at camera rate (30 Hz) instead of render rate.
 
 ## Quick Start
 
@@ -49,12 +67,25 @@ cd webxr-ar-ai
 npm install
 npm run dev
 # Starts on https://0.0.0.0:8081
+# If the CV server runs on another machine:
+#   CV_SERVER_URL=http://<cv-host>:8000 npm run dev
 ```
 
 ### 3. Open on Quest 3
 
-Navigate to `https://<PC-IP>:8081` in the Meta Quest browser and accept the certificate.  
-The app requests `immersive-ar` automatically.
+Navigate to `https://<PC-IP>:8081` in the Meta Quest browser and accept the certificate.
+The app requests `immersive-ar` automatically (with `plane-detection`, `mesh-detection`, and `anchors`).
+
+> The dev-server proxies `/v1/*` to the CV server so the headset never makes
+> a mixed-content (HTTPS page → HTTP API) request.
+
+**Optional camera calibration:** the passthrough camera's horizontal FOV defaults to 80° and can be tuned per device with a URL parameter, e.g. `https://<PC-IP>:8081/?hfov=75`. If pins land short of / past object edges consistently, adjust this value.
+
+## Desktop tools
+
+- **Status overlay** — the 2D page (desktop browser, or the Quest browser window before entering AR) shows live status: WebXR support, CV-server health, pin counts, the controller legend, and export buttons. It hides automatically while the immersive session is presenting.
+- **Local export** — pressing Left **Y** in-headset (or **Download GLB** on the overlay) saves **two artifacts** to the device's Downloads folder — the `.glb` and a Markdown scan report (`.md`) — and then attempts the CV-server upload. A scan is never lost to an unreachable server.
+- **Scan viewer** — open `https://<PC-IP>:8081/viewer.html` on any desktop browser and drop in an exported `companion-scan-*.glb`. It renders the captured room geometry as wireframe, overlays every pin (click a pin in the sidebar to focus it), and shows the floorplan bounds, anchor UUID, and export metadata.
 
 ## Controller Button Map
 
@@ -72,7 +103,8 @@ The app requests `immersive-ar` automatically.
 Model:   Florence
 Display: Both
 Preview: Near (1m)
-BUSY…       ← during capture
+Pins:    12 cv · 8 scene
+4 detections · 8 scene pins   ← status line (green/yellow/red); BUSY… during capture
 ```
 
 ## Project Structure
@@ -80,31 +112,41 @@ BUSY…       ← during capture
 ```
 webxr-ar-ai/
 ├── index.html
+├── viewer.html                       # Desktop scan viewer (drag & drop GLB)
 ├── vite.config.js
 ├── package.json
 ├── src/
-│   ├── main.js                       # Entry: World.create + system wiring
+│   ├── main.js                       # Entry: World.create + system wiring + session lifecycle
+│   ├── viewer/
+│   │   ├── main.js                   # Viewer page: GLB load, pin rendering, sidebar
+│   │   └── scanParser.js             # Pure extras-parsing helpers
 │   ├── app/
-│   │   └── AppState.js               # Reactive singleton state
+│   │   └── AppState.js               # Reactive singleton state (incl. status line)
 │   ├── spatial/
 │   │   ├── SpatialPin.js             # Pin data class
-│   │   └── SpatialPinManager.js      # Unified pin store (EventTarget)
+│   │   ├── SpatialPinManager.js      # Unified pin store (EventTarget)
+│   │   └── ScanAnchorRoot.js         # Persistent-anchor root for scan content
 │   ├── pipeline/
-│   │   ├── PipelineA.js              # WebXR planes/meshes → pins
-│   │   └── PipelineB.js              # Camera → CV server → raycast → pins
+│   │   ├── PipelineA.js              # WebXR planes/meshes → pins (stable track IDs)
+│   │   ├── PipelineB.js              # Camera → CV server → local raycast → pins
+│   │   └── SceneRaycaster.js         # Synchronous raycast vs. scene geometry
 │   ├── cv/
-│   │   └── CvServerClient.js         # REST client for /v1/*
+│   │   ├── CvServerClient.js         # REST client for /v1/*
+│   │   └── CaptureEncoder.js         # Async off-main-thread JPEG encoding
 │   ├── rendering/
 │   │   ├── CameraViewfinder.js       # Camera preview + 2D bbox overlay
-│   │   ├── SpatialLabel3DRenderer.js # 3D persistent label groups
-│   │   └── FrustumRenderer.js        # Capture-time ray visualisation
+│   │   ├── SpatialLabel3DRenderer.js # 3D persistent label groups (shared geo/mats)
+│   │   └── FrustumRenderer.js        # Capture-ray visualisation (batched)
 │   ├── input/
 │   │   └── ControllerInputSystem.js  # IWSDK ECS system for buttons
 │   ├── ui/
 │   │   ├── ControllerMenuBuilder.js  # Coloured disc indicators on controllers
-│   │   └── WristHUD.js               # Left-wrist canvas panel
+│   │   ├── WristHUD.js               # Left-wrist canvas panel (pins + status)
+│   │   └── DesktopOverlay.js         # DOM status panel for the 2D page
 │   └── export/
+│       ├── SceneGeometrySnapshot.js  # Plane/mesh geometry copies for export
 │       ├── GltfExporter.js           # GLTFExporter + spatial metadata extras
+│       ├── GltfDownload.js           # Local .glb download (headset Downloads)
 │       └── GltfSyncClient.js         # Upload GLB to /v1/gltf
 
 cv-server/
@@ -115,6 +157,29 @@ cv-server/
 └── README.md
 ```
 
+## Export format
+
+The GLB contains the snapshotted room geometry (anchor-relative transforms) and a `companion_scan` extras block:
+
+```jsonc
+{
+  "companion_scan": {
+    "version": "1.1",
+    "session_id": "…",
+    "exported_at": "2026-06-11T…",
+    "anchor_uuid": "…",            // persistent WebXR anchor (null if unsupported)
+    "pins": [{
+      "position":              { "x": 0, "y": 0, "z": 0 },  // session world space
+      "position_anchor_local": { "x": 0, "y": 0, "z": 0 },  // survives re-localization
+      "hit_type": "mesh | plane | fallback",
+      "placement_confidence": 0.95,
+      // … label, bbox, semantic labels, extents, SAM2 RLE mask, caption …
+    }],
+    "floorplan": { "bounds": { "min": {}, "max": {} } }      // fallback pins excluded
+  }
+}
+```
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -122,9 +187,18 @@ cv-server/
 | AR runtime | Meta IWSDK (`@iwsdk/core`) |
 | 3D engine | Three.js (bundled in IWSDK) |
 | Build | Vite 6 + vite-plugin-mkcert |
-| Scene Understanding | WebXR `plane-detection` + `mesh-detection` |
-| Raycast | IWSDK `EnvironmentRaycastTarget` / `RaycastSpace.Viewer` |
+| Scene Understanding | WebXR `plane-detection` + `mesh-detection` + `anchors` |
+| Raycast | Local `THREE.Raycaster` vs. scene-understanding geometry |
 | Camera | IWSDK `CameraSource` component |
 | AI models | Florence-2, GroundingDINO, SAM 2 (Docker) |
 | Export | Three.js `GLTFExporter` |
 | Backend | FastAPI + Uvicorn (Docker) |
+
+## Testing
+
+```bash
+cd webxr-ar-ai
+npm run test:unit    # Vitest unit tests
+npm run test:e2e     # Playwright + IWER (emulated Quest 3 WebXR runtime)
+npm run test:all
+```

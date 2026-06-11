@@ -62,18 +62,40 @@ describe('runPipelineA — plane entities', () => {
     expect(mgr.pins).toHaveLength(1);
     const p = mgr.pins[0];
     expect(p.source).toBe(PinSource.MetaScene);
-    expect(p.label).toBe('horizontal');
+    expect(p.label).toBe('FLOOR');          // semanticLabel preferred over orientation
     expect(p.hitType).toBe('plane');
     expect(p.worldPosition).toEqual({ x: 1, y: 0, z: 2 });
     expect(p.captureId).toBe('cap-1');
     expect(p.captureSessionId).toBe('sess-1');
   });
 
-  it('uses "plane" as label fallback when orientation is undefined', () => {
-    const plane = { semanticLabel: 'WALL' };
-    const entity = makeEntity({ planeData: { _plane: plane } });
-    runPipelineA(new Set([entity]), new Set(), mgr, 'cap', 'sess');
-    expect(mgr.pins[0].label).toBe('plane');
+  it('falls back to orientation, then "plane", for the label', () => {
+    const oriented = makeEntity({ planeData: { _plane: { orientation: 'vertical' } } });
+    const bare     = makeEntity({ planeData: { _plane: {} } });
+    runPipelineA(new Set([oriented, bare]), new Set(), mgr, 'cap', 'sess');
+    expect(mgr.pins.map(p => p.label).sort()).toEqual(['plane', 'vertical']);
+  });
+
+  it('keeps two planes with the same semantic label as distinct pins', () => {
+    const wallA = makeEntity({ planeData: { _plane: { semanticLabel: 'wall' } }, position: { x: -2, y: 0, z: 0 } });
+    const wallB = makeEntity({ planeData: { _plane: { semanticLabel: 'wall' } }, position: { x:  2, y: 0, z: 0 } });
+    runPipelineA(new Set([wallA, wallB]), new Set(), mgr, 'cap', 'sess');
+    expect(mgr.pins).toHaveLength(2);
+    expect(mgr.pins[0].trackId).not.toBe(mgr.pins[1].trackId);
+  });
+
+  it('updates the same pin when the same native plane is re-captured', () => {
+    const plane  = { semanticLabel: 'floor', lastChangedTime: 1 };
+    const first  = makeEntity({ planeData: { _plane: plane }, position: { x: 0, y: 0, z: 0 } });
+    runPipelineA(new Set([first]), new Set(), mgr, 'cap-1', 'sess');
+
+    // Same native plane object, refined pose and lastChangedTime
+    plane.lastChangedTime = 2;
+    const second = makeEntity({ planeData: { _plane: plane }, position: { x: 0.1, y: 0, z: 0 } });
+    runPipelineA(new Set([second]), new Set(), mgr, 'cap-2', 'sess');
+
+    expect(mgr.pins).toHaveLength(1);
+    expect(mgr.pins[0].worldPosition.x).toBeCloseTo(0.1);
   });
 
   it('sets semanticLabels from plane.semanticLabel', () => {
@@ -174,6 +196,34 @@ describe('runPipelineA — mesh entities', () => {
     const entity = makeEntity({ meshData: { _mesh: mesh } });
     runPipelineA(new Set(), new Set([entity]), mgr, 'cap', 'sess');
     expect(mgr.pins[0].trackId).toMatch(/^mesh-/);
+  });
+
+  it('computes volumeExtents from the raw vertex buffer', () => {
+    const mesh = {
+      semanticLabel: 'table',
+      vertices: new Float32Array([
+        -1, 0, -2,
+         1, 0.8, 2,
+         0, 0.4, 0,
+      ]),
+    };
+    const entity = makeEntity({ meshData: { _mesh: mesh } });
+    runPipelineA(new Set(), new Set([entity]), mgr, 'cap', 'sess');
+
+    const v = mgr.pins[0].volumeExtents;
+    expect(v).not.toBeNull();
+    expect(v.size.x).toBeCloseTo(2);
+    expect(v.size.y).toBeCloseTo(0.8);
+    expect(v.size.z).toBeCloseTo(4);
+    expect(v.center.x).toBeCloseTo(0);
+    expect(v.center.y).toBeCloseTo(0.4);
+    expect(v.center.z).toBeCloseTo(0);
+  });
+
+  it('leaves volumeExtents null when the mesh has no vertices', () => {
+    const entity = makeEntity({ meshData: { _mesh: { semanticLabel: 'lamp' } } });
+    runPipelineA(new Set(), new Set([entity]), mgr, 'cap', 'sess');
+    expect(mgr.pins[0].volumeExtents).toBeNull();
   });
 
   it('skips mesh entity when _mesh is null', () => {

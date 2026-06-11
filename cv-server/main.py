@@ -6,6 +6,8 @@ Endpoints:
   POST /v1/segment  — Grounded SAM 2 segmentation
   POST /v1/florence — Florence-2 caption + object detection
   POST /v1/gltf     — Receive and store glTF export
+  GET  /v1/gltf     — List stored exports
+  GET  /v1/gltf/{name} — Download a stored export
   GET  /v1/health   — Health / readiness check
 
 All image endpoints accept:
@@ -19,13 +21,15 @@ import io
 import json
 import logging
 import os
+import re
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import torch
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
 from pydantic import BaseModel
 
@@ -262,7 +266,7 @@ async def florence(req: FlorenceRequest):
 async def upload_gltf(file: UploadFile = File(...)):
     try:
         content  = await file.read()
-        filename = file.filename or f"export_{uuid.uuid4().hex}.gltf"
+        filename = _safe_gltf_name(file.filename) or f"export_{uuid.uuid4().hex}.glb"
         dest     = GLTF_STORE / filename
         dest.write_bytes(content)
         logger.info("Saved glTF: %s (%d bytes)", dest, len(content))
@@ -270,6 +274,48 @@ async def upload_gltf(file: UploadFile = File(...)):
     except Exception as exc:
         logger.exception("glTF upload error")
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/v1/gltf")
+async def list_gltf():
+    """List stored scan exports, newest first (consumed by the desktop viewer)."""
+    files = sorted(
+        (f for f in GLTF_STORE.iterdir() if f.is_file() and f.suffix in (".glb", ".gltf")),
+        key=lambda f: f.stat().st_mtime,
+        reverse=True,
+    )
+    return {
+        "files": [
+            {
+                "name": f.name,
+                "bytes": f.stat().st_size,
+                "modified": datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc).isoformat(),
+            }
+            for f in files
+        ]
+    }
+
+
+@app.get("/v1/gltf/{filename}")
+async def get_gltf(filename: str):
+    """Serve a stored scan export by name."""
+    safe = _safe_gltf_name(filename)
+    if not safe or safe != filename:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    path = GLTF_STORE / safe
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+    return FileResponse(path, media_type="model/gltf-binary", filename=safe)
+
+
+def _safe_gltf_name(name: str | None) -> str | None:
+    """Restrict filenames to a single safe path component."""
+    if not name:
+        return None
+    name = Path(name).name  # strip any directory components
+    if name in ("", ".", "..") or not re.fullmatch(r"[A-Za-z0-9._-]+", name):
+        return None
+    return name
 
 
 # ---------------------------------------------------------------------------

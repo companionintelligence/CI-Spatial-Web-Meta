@@ -214,3 +214,24 @@ describe('AppState — previewDistanceLabel()', () => {
     expect(appState.previewDistanceLabel()).toBe('Unknown');
   });
 });
+
+describe('AppState — status line', () => {
+  it('starts with an empty info status', () => {
+    expect(appState.status).toEqual({ text: '', level: 'info', at: 0 });
+  });
+
+  it('setStatus updates text, level, and timestamp', () => {
+    appState.setStatus('12 detections', 'ok');
+    expect(appState.status.text).toBe('12 detections');
+    expect(appState.status.level).toBe('ok');
+    expect(appState.status.at).toBeGreaterThan(0);
+  });
+
+  it('setStatus defaults to info level and notifies subscribers', () => {
+    const fn = vi.fn();
+    appState.subscribe(fn);
+    appState.setStatus('hello');
+    expect(appState.status.level).toBe('info');
+    expect(fn).toHaveBeenCalledWith('status', appState);
+  });
+});
