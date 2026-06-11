@@ -11,6 +11,8 @@ export class SpatialPinManager extends EventTarget {
     super();
     /** @type {Map<string, import('./SpatialPin.js').SpatialPin>} */
     this._pins = new Map();
+    /** @type {Map<string, import('./SpatialPin.js').SpatialPin>} `${source}:${trackId}` → pin */
+    this._byTrack = new Map();
     this.mergeByTrackId = mergeByTrackId;
     this.stalePinAgeMs = stalePinAgeMs;
   }
@@ -34,9 +36,7 @@ export class SpatialPinManager extends EventTarget {
     if (!pin) return;
 
     if (this.mergeByTrackId && pin.trackId) {
-      const existing = this.pins.find(
-        p => p.trackId === pin.trackId && p.source === pin.source,
-      );
+      const existing = this._byTrack.get(`${pin.source}:${pin.trackId}`);
       if (existing) {
         Object.assign(existing, {
           worldPosition:       pin.worldPosition,
@@ -54,6 +54,7 @@ export class SpatialPinManager extends EventTarget {
     }
 
     this._pins.set(pin.id, pin);
+    if (pin.trackId) this._byTrack.set(`${pin.source}:${pin.trackId}`, pin);
     this.dispatchEvent(Object.assign(new Event('add'), { pin }));
     return pin;
   }
@@ -62,6 +63,7 @@ export class SpatialPinManager extends EventTarget {
     const pin = this._pins.get(pinId);
     if (!pin) return false;
     this._pins.delete(pinId);
+    if (pin.trackId) this._byTrack.delete(`${pin.source}:${pin.trackId}`);
     this.dispatchEvent(Object.assign(new Event('remove'), { pinId }));
     return true;
   }
@@ -70,6 +72,7 @@ export class SpatialPinManager extends EventTarget {
     for (const [id, pin] of this._pins) {
       if (pin.source === source) {
         this._pins.delete(id);
+        if (pin.trackId) this._byTrack.delete(`${pin.source}:${pin.trackId}`);
         this.dispatchEvent(Object.assign(new Event('remove'), { pinId: id }));
       }
     }
@@ -77,6 +80,7 @@ export class SpatialPinManager extends EventTarget {
 
   clearAll() {
     this._pins.clear();
+    this._byTrack.clear();
     this.dispatchEvent(new Event('clear'));
   }
 

@@ -32,19 +32,23 @@ export class WristHUD {
     appState.subscribe(() => { this._dirty = true; });
   }
 
-  /** Attach the HUD to the left grip space. Call after World.create. */
+  /**
+   * Attach the HUD to the left grip space. Safe to call repeatedly until it
+   * returns true — grip spaces appear asynchronously after session start.
+   * @returns {boolean} true once attached
+   */
   init() {
+    if (this._mesh) return true;
     const grip = this.world.input?.xrOrigin?.gripSpaces?.left;
-    if (!grip) {
-      console.warn('[WristHUD] Left grip space not available');
-      return;
-    }
+    if (!grip) return false;
 
     this._canvas = document.createElement('canvas');
     this._canvas.width  = CANVAS_W;
     this._canvas.height = CANVAS_H;
     this._ctx = this._canvas.getContext('2d');
     this._tex = new THREE.CanvasTexture(this._canvas);
+    this._tex.generateMipmaps = false;
+    this._tex.minFilter = THREE.LinearFilter;
 
     const mat  = new THREE.MeshBasicMaterial({ map: this._tex, transparent: true, depthTest: false });
     this._mesh = new THREE.Mesh(new THREE.PlaneGeometry(HUD_WIDTH, HUD_HEIGHT), mat);
@@ -56,6 +60,7 @@ export class WristHUD {
 
     grip.add(this._mesh);
     this._redraw();
+    return true;
   }
 
   /** Call every frame — redraws canvas if state changed. */

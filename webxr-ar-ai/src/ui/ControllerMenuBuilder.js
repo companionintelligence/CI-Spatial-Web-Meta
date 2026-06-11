@@ -28,25 +28,32 @@ const INDICATORS = {
 };
 
 /**
- * Build controller indicators on both grip spaces.
+ * Build controller indicators on both grip spaces. Safe to call repeatedly —
+ * grip spaces appear asynchronously after session start, and each hand is
+ * only built once.
+ *
  * @param {import('@iwsdk/core').World} world
+ * @returns {boolean} true once both hands have indicators
  */
 export function buildControllerMenu(world) {
   const origin = world.input?.xrOrigin;
-  if (!origin) {
-    console.warn('[ControllerMenuBuilder] xrOrigin not available yet');
-    return;
-  }
+  if (!origin) return false;
 
+  let built = 0;
   for (const [hand, items] of Object.entries(INDICATORS)) {
     const grip = origin.gripSpaces[hand];
     if (!grip) continue;
 
-    for (const item of items) {
-      const group = _makeIndicator(item.label, item.color, item.offset);
-      grip.add(group);
+    if (!grip.userData.companionMenuBuilt) {
+      grip.userData.companionMenuBuilt = true;
+      for (const item of items) {
+        const group = _makeIndicator(item.label, item.color, item.offset);
+        grip.add(group);
+      }
     }
+    built++;
   }
+  return built === Object.keys(INDICATORS).length;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
@@ -75,6 +82,8 @@ function _makeIndicator(label, color, offset) {
   ctx.fillText(label, 8, 32);
 
   const tex  = new THREE.CanvasTexture(canvas);
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
   const mesh = new THREE.Mesh(
     new THREE.PlaneGeometry(0.06, 0.012),
     new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false }),

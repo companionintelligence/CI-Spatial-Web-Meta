@@ -106,10 +106,34 @@ describe('exportGltf — extras structure', () => {
 
     expect(capturedExtras).toBeDefined();
     const cs = capturedExtras.companion_scan;
-    expect(cs.version).toBe('1.0');
+    expect(cs.version).toBe('1.1');
     expect(cs.session_id).toBe('test-session-id');
     expect(typeof cs.exported_at).toBe('string');
+    expect(cs.anchor_uuid).toBeNull();
     expect(cs.pins).toHaveLength(1);
+  });
+
+  it('includes anchor uuid and anchor-local positions when provided', async () => {
+    const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js');
+    GLTFExporter.prototype.parse = function (scene, onDone) {
+      capturedExtras = JSON.parse(JSON.stringify(scene.userData.gltfExtras));
+      onDone(new ArrayBuffer(8));
+    };
+
+    const mgr = new SpatialPinManager();
+    const pin = makePin({ hitType: 'plane' });
+    pin.worldPosition = { x: 1, y: 2, z: 3 };
+    mgr.addOrUpdate(pin);
+
+    await exportGltf(makeScene(), mgr, {
+      anchorUuid: 'uuid-1234',
+      worldToAnchorLocal: (p) => ({ x: p.x - 1, y: p.y - 1, z: p.z - 1 }),
+    });
+
+    const cs = capturedExtras.companion_scan;
+    expect(cs.anchor_uuid).toBe('uuid-1234');
+    expect(cs.pins[0].position).toEqual({ x: 1, y: 2, z: 3 });
+    expect(cs.pins[0].position_anchor_local).toEqual({ x: 0, y: 1, z: 2 });
   });
 
   it('serialises all pin fields correctly', async () => {
@@ -187,7 +211,7 @@ describe('exportGltf — floorplan computation', () => {
       { x:  0, y: -1, z:  0 },
     ];
     for (const pos of positions) {
-      const p = makePin();
+      const p = makePin({ hitType: 'plane' });
       p.worldPosition = pos;
       mgr.addOrUpdate(p);
     }
@@ -197,11 +221,32 @@ describe('exportGltf — floorplan computation', () => {
     expect(fp.bounds.max).toEqual({ x:  3, y:  2, z:  4 });
   });
 
+  it('excludes fallback pins (distance guesses) from the bounds', async () => {
+    const mgr = new SpatialPinManager();
+    const placed = makePin({ hitType: 'mesh' });
+    placed.worldPosition = { x: 1, y: 1, z: 1 };
+    mgr.addOrUpdate(placed);
+
+    const guess = makePin({ hitType: 'fallback' });
+    guess.worldPosition = { x: 100, y: 100, z: 100 };
+    mgr.addOrUpdate(guess);
+
+    const fp = await captureExtras(mgr);
+    expect(fp.bounds.max).toEqual({ x: 1, y: 1, z: 1 });
+  });
+
+  it('returns null floorplan when all pins are fallback guesses', async () => {
+    const mgr = new SpatialPinManager();
+    mgr.addOrUpdate(makePin({ hitType: 'fallback' }));
+    const fp = await captureExtras(mgr);
+    expect(fp).toBeNull();
+  });
+
   it('counts cv and scene pins separately in floorplan', async () => {
     const mgr = new SpatialPinManager();
-    mgr.addOrUpdate(makePin({ source: PinSource.CvServer }));
-    mgr.addOrUpdate(makePin({ source: PinSource.CvServer }));
-    mgr.addOrUpdate(makePin({ source: PinSource.MetaScene }));
+    mgr.addOrUpdate(makePin({ source: PinSource.CvServer, hitType: 'plane' }));
+    mgr.addOrUpdate(makePin({ source: PinSource.CvServer, hitType: 'plane' }));
+    mgr.addOrUpdate(makePin({ source: PinSource.MetaScene, hitType: 'plane' }));
 
     const fp = await captureExtras(mgr);
     expect(fp.cv_pin_count).toBe(2);

@@ -4,6 +4,11 @@
  * Converts XRPlane / XRMesh Query results (from the IWSDK
  * SceneUnderstandingSystem) into SpatialPin objects tagged MetaScene.
  *
+ * Track identity: native XRPlane/XRMesh objects keep the same JS identity for
+ * the lifetime of the tracked surface, so track IDs are assigned from a
+ * WeakMap keyed on the native object. Re-capturing the same wall updates its
+ * pin in place; two walls sharing the semantic label 'wall' stay distinct.
+ *
  * Must be called from within a System that has XRPlane / XRMesh queries
  * so the entity objects and their Object3Ds are fully resolved.
  *
@@ -19,6 +24,19 @@ import { SpatialPin, PinSource } from '../spatial/SpatialPin.js';
 
 let _frameIndex = 0;
 
+// Stable per-surface IDs, keyed on the native WebXR object identity.
+const _trackIds = new WeakMap();
+let _trackSeq = 0;
+
+function trackIdFor(native, prefix) {
+  let id = _trackIds.get(native);
+  if (!id) {
+    id = `${prefix}-${++_trackSeq}`;
+    _trackIds.set(native, id);
+  }
+  return id;
+}
+
 export function runPipelineA(planeEntities, meshEntities, pinManager, captureId, captureSessionId) {
   // ── Planes ────────────────────────────────────────────────────────────────
   for (const entity of planeEntities) {
@@ -29,7 +47,7 @@ export function runPipelineA(planeEntities, meshEntities, pinManager, captureId,
 
     const pin = new SpatialPin();
     pin.source           = PinSource.MetaScene;
-    pin.label            = plane.orientation ?? 'plane';
+    pin.label            = plane.semanticLabel ?? plane.orientation ?? 'plane';
     pin.worldPosition    = { x: obj.position.x, y: obj.position.y, z: obj.position.z };
     pin.worldRotation    = { x: obj.quaternion.x, y: obj.quaternion.y, z: obj.quaternion.z, w: obj.quaternion.w };
     pin.hitType          = 'plane';
@@ -37,7 +55,7 @@ export function runPipelineA(planeEntities, meshEntities, pinManager, captureId,
     pin.captureId        = captureId;
     pin.captureSessionId = captureSessionId;
     pin.captureFrameIndex = _frameIndex++;
-    pin.trackId          = plane.semanticLabel ?? String(plane.lastChangedTime ?? _frameIndex);
+    pin.trackId          = trackIdFor(plane, 'plane');
     pin.semanticLabels   = plane.semanticLabel ? [plane.semanticLabel] : null;
 
     if (plane.polygon?.length) {
@@ -71,9 +89,31 @@ export function runPipelineA(planeEntities, meshEntities, pinManager, captureId,
     pin.captureId        = captureId;
     pin.captureSessionId = captureSessionId;
     pin.captureFrameIndex = _frameIndex++;
-    pin.trackId          = `mesh-${mesh.lastChangedTime ?? _frameIndex}`;
+    pin.trackId          = trackIdFor(mesh, 'mesh');
     pin.semanticLabels   = mesh.semanticLabel ? [mesh.semanticLabel] : null;
+    pin.volumeExtents    = _volumeExtentsFromVertices(mesh.vertices);
 
     pinManager.addOrUpdate(pin);
   }
+}
+
+/**
+ * Mesh-local axis-aligned bounds from the raw XRMesh vertex buffer.
+ * @param {Float32Array|undefined} vertices
+ * @returns {{center:{x,y,z},size:{x,y,z}}|null}
+ */
+function _volumeExtentsFromVertices(vertices) {
+  if (!vertices || vertices.length < 3) return null;
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  for (let i = 0; i < vertices.length; i += 3) {
+    const x = vertices[i], y = vertices[i + 1], z = vertices[i + 2];
+    if (x < minX) minX = x; if (x > maxX) maxX = x;
+    if (y < minY) minY = y; if (y > maxY) maxY = y;
+    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+  }
+  return {
+    center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2, z: (minZ + maxZ) / 2 },
+    size:   { x: maxX - minX, y: maxY - minY, z: maxZ - minZ },
+  };
 }

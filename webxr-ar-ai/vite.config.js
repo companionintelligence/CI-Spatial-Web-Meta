@@ -21,9 +21,13 @@ export default defineConfig({
     port: 8081,
     https: true,
     proxy: {
-      // Forward REST calls to the CV server
+      // Forward REST calls to the CV server. The headset loads the page over
+      // HTTPS, so direct fetches to a plain-HTTP CV server would be blocked
+      // as mixed content — the dev-server proxy keeps everything same-origin.
+      // Override the target with CV_SERVER_URL when the CV server runs on
+      // another machine.
       '/v1': {
-        target: 'http://localhost:8000',
+        target: process.env.CV_SERVER_URL ?? 'http://localhost:8000',
         changeOrigin: true,
       },
     },

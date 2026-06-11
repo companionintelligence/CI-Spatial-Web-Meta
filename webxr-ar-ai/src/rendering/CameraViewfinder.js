@@ -2,14 +2,22 @@
  * CameraViewfinder — world-space camera preview plane.
  *
  * Creates a flat plane anchored 40 cm in front of the viewer's head.
- * The material uses the VideoTexture from the CameraSource entity.
  * A second overlay plane carries a CanvasTexture for 2D bounding-box drawing.
+ *
+ * Video binding is re-evaluated every frame: IWSDK's CameraSystem stops the
+ * camera (and disposes its texture) whenever the XR session ends and restarts
+ * it on re-entry, so the viewfinder must re-bind rather than cache.
+ *
+ * Texture upload throttling: a VideoTexture re-uploads 1280×720 every render
+ * frame (90 Hz). When `requestVideoFrameCallback` is available, the
+ * viewfinder owns a plain Texture and marks it dirty per *video* frame
+ * (30 Hz) instead — a 3× cut in texture-upload bandwidth.
  *
  * Usage:
  *   const vf = new CameraViewfinder(world);
- *   await vf.init(cameraEntity);    // call once after CameraSource is running
+ *   vf.init(cameraEntity);          // sync — builds the planes
  *   vf.setOverlayData(detections);  // call each capture
- *   vf.update();                    // call every frame to redraw if dirty
+ *   vf.update();                    // call every frame (binds video, redraws)
  */
 
 import * as THREE from 'three';
@@ -23,41 +31,35 @@ export class CameraViewfinder {
    * @param {import('@iwsdk/core').World} world
    */
   constructor(world) {
-    this.world       = world;
-    this._group      = null;
-    this._overlayCtx = null;
-    this._overlayTex = null;
-    this._detections = [];
-    this._dirty      = false;
+    this.world         = world;
+    this._cameraEntity = null;
+    this._group        = null;
+    this._videoMat     = null;
+    this._overlayCtx   = null;
+    this._overlayTex   = null;
+    this._detections   = [];
+    this._dirty        = false;
+    this._boundVideo   = null;
+    this._ownTexture   = null;
+    this._rvfcId       = 0;
   }
 
   /**
-   * Create the viewfinder + overlay planes and attach them to the camera.
+   * Build the viewfinder + overlay planes and attach them to the camera.
+   * Video binding happens lazily in update() once the camera is streaming.
    * @param {import('@iwsdk/core').Entity} cameraEntity  entity with CameraSource
    */
-  async init(cameraEntity) {
-    // Poll for CameraSource to produce a video element (CameraSystem starts it async)
-    let videoEl = null;
-    for (let attempt = 0; attempt < 60; attempt++) {
-      videoEl = cameraEntity.getValue(CameraSource, 'videoElement');
-      if (videoEl) break;
-      await new Promise(r => setTimeout(r, 200));
-    }
-    if (!videoEl) {
-      console.warn('[CameraViewfinder] Camera video element not available after timeout');
-    }
+  init(cameraEntity) {
+    this._cameraEntity = cameraEntity;
 
-    const videoTex = cameraEntity.getValue(CameraSource, 'texture')
-                  ?? new THREE.VideoTexture(videoEl);
-
-    const aspect = videoEl?.videoWidth && videoEl?.videoHeight
-      ? videoEl.videoWidth / videoEl.videoHeight
-      : 16 / 9;
+    const aspect = 16 / 9;
     const planeH = PLANE_WIDTH / aspect;
 
     // ── Video plane ──────────────────────────────────────────────────────
-    const videoMat  = new THREE.MeshBasicMaterial({ map: videoTex, transparent: true, depthTest: false });
-    const videoMesh = new THREE.Mesh(new THREE.PlaneGeometry(PLANE_WIDTH, planeH), videoMat);
+    this._videoMat = new THREE.MeshBasicMaterial({
+      color: 0x000000, transparent: true, opacity: 0.4, depthTest: false,
+    });
+    const videoMesh = new THREE.Mesh(new THREE.PlaneGeometry(PLANE_WIDTH, planeH), this._videoMat);
     videoMesh.renderOrder = 1;
 
     // ── Overlay canvas ────────────────────────────────────────────────────
@@ -67,6 +69,8 @@ export class CameraViewfinder {
     canvas.width = ow; canvas.height = oh;
     this._overlayCtx = canvas.getContext('2d');
     this._overlayTex = new THREE.CanvasTexture(canvas);
+    this._overlayTex.generateMipmaps = false;
+    this._overlayTex.minFilter = THREE.LinearFilter;
 
     const overlayMat  = new THREE.MeshBasicMaterial({ map: this._overlayTex, transparent: true, depthTest: false });
     const overlayMesh = new THREE.Mesh(
@@ -97,14 +101,73 @@ export class CameraViewfinder {
     this._dirty = true;
   }
 
-  /** Redraw the overlay canvas if dirty (call every frame). */
+  /** Call every frame — rebinds video if needed, redraws overlay if dirty. */
   update() {
-    if (!this._dirty || !this._overlayCtx) return;
-    this._dirty = false;
-    this._redraw();
+    this._bindVideo();
+    if (this._dirty && this._overlayCtx) {
+      this._dirty = false;
+      this._redraw();
+    }
+  }
+
+  /** Release video binding (e.g. on dispose). */
+  unbind() {
+    if (this._boundVideo && this._rvfcId && this._boundVideo.cancelVideoFrameCallback) {
+      this._boundVideo.cancelVideoFrameCallback(this._rvfcId);
+    }
+    this._rvfcId = 0;
+    this._boundVideo = null;
+    if (this._ownTexture) {
+      this._ownTexture.dispose();
+      this._ownTexture = null;
+    }
+    if (this._videoMat) {
+      this._videoMat.map = null;
+      this._videoMat.needsUpdate = true;
+    }
   }
 
   // ── Private ───────────────────────────────────────────────────────────────
+
+  _bindVideo() {
+    if (!this._videoMat || !this._cameraEntity) return;
+    const videoEl = this._cameraEntity.getValue(CameraSource, 'videoElement');
+    if (videoEl === this._boundVideo) return;
+
+    this.unbind();
+    if (!videoEl) return;
+    this._boundVideo = videoEl;
+
+    if (typeof videoEl.requestVideoFrameCallback === 'function') {
+      // Own texture, uploaded once per video frame instead of per render frame.
+      const tex = new THREE.Texture(videoEl);
+      tex.colorSpace      = THREE.SRGBColorSpace;
+      tex.generateMipmaps = false;
+      tex.minFilter       = THREE.LinearFilter;
+      tex.magFilter       = THREE.LinearFilter;
+      this._ownTexture = tex;
+      const onFrame = () => {
+        tex.needsUpdate = true;
+        if (this._boundVideo === videoEl) {
+          this._rvfcId = videoEl.requestVideoFrameCallback(onFrame);
+        }
+      };
+      this._rvfcId = videoEl.requestVideoFrameCallback(onFrame);
+      this._applyMap(tex);
+    } else {
+      // Fall back to IWSDK's managed VideoTexture (per-render-frame upload).
+      const tex = this._cameraEntity.getValue(CameraSource, 'texture')
+               ?? new THREE.VideoTexture(videoEl);
+      this._applyMap(tex);
+    }
+  }
+
+  _applyMap(tex) {
+    this._videoMat.map = tex;
+    this._videoMat.color.set(0xffffff);
+    this._videoMat.opacity = 1;
+    this._videoMat.needsUpdate = true;
+  }
 
   _redraw() {
     const ctx = this._overlayCtx;

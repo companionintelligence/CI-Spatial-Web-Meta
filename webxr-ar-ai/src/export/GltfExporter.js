@@ -1,20 +1,25 @@
 /**
- * GltfExporter — exports the Three.js scene as a glTF 2.0 file and injects
+ * GltfExporter — exports the scan geometry root as a GLB and injects
  * rich spatial metadata into the glTF `extras` section.
+ *
+ * The export root is the dedicated scan subtree (snapshotted scene geometry
+ * under the persistent-anchor root) — NOT the live render scene, so UI
+ * meshes, labels and viewfinder planes never leak into the export, and node
+ * transforms are anchor-relative.
  *
  * Extras structure:
  *   extras.companion_scan: {
- *     version:            "1.0",
+ *     version:            "1.1",
  *     session_id:         string,
  *     exported_at:        ISO string,
+ *     anchor_uuid:        string|null,   // persistent WebXR anchor UUID
  *     pins:               SpatialPin[],
- *     floorplan:          { bounds: {min,max} } | null,
+ *     floorplan:          { bounds: {min,max}, ... } | null,
  *   }
  *
- * Each pin is serialised as:
- *   { id, source, label, position, rotation, confidence, bbox, hit_type,
- *     placement_confidence, track_id, capture_id, session_id, frame_index,
- *     semantic_labels, plane_extents, volume_extents, mask_rle, florence_caption }
+ * Each pin carries `position` (session world space) and
+ * `position_anchor_local` (relative to the persistent anchor — the frame
+ * that survives across sessions).
  */
 
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js';
@@ -22,58 +27,68 @@ import { appState } from '../app/AppState.js';
 import { PinSource } from '../spatial/SpatialPin.js';
 
 /**
- * Export the scene + spatial pins to a glTF JSON string.
+ * Export the scan subtree + spatial pins to a GLB.
  *
- * @param {import('three').Scene} scene
+ * @param {import('three').Object3D} exportRoot  scan geometry root
  * @param {import('../spatial/SpatialPinManager.js').SpatialPinManager} pinManager
+ * @param {object}   [opts]
+ * @param {string|null} [opts.anchorUuid]
+ * @param {(p: {x,y,z}) => {x,y,z}} [opts.worldToAnchorLocal]
  * @returns {Promise<ArrayBuffer>}  glTF binary (GLB)
  */
-export async function exportGltf(scene, pinManager) {
+export async function exportGltf(exportRoot, pinManager, opts = {}) {
   const exporter = new GLTFExporter();
+  const { anchorUuid = null, worldToAnchorLocal = null } = opts;
 
   // ── Build extras ─────────────────────────────────────────────────────────
-  const pins  = pinManager.pins.map(_serialisePin);
+  const pins  = pinManager.pins.map(p => _serialisePin(p, worldToAnchorLocal));
   const floor = _computeFloorplan(pinManager);
 
   const extras = {
     companion_scan: {
-      version:      '1.0',
+      version:      '1.1',
       session_id:   appState.captureSessionId,
       exported_at:  new Date().toISOString(),
+      anchor_uuid:  anchorUuid,
       pins,
       floorplan:    floor,
     },
   };
 
-  // Inject extras onto the scene object (GLTFExporter reads scene.userData.gltfExtras)
-  const prevExtras = scene.userData.gltfExtras;
-  scene.userData.gltfExtras = extras;
+  // Inject extras onto the root object (GLTFExporter reads userData.gltfExtras)
+  const prevExtras = exportRoot.userData.gltfExtras;
+  exportRoot.userData.gltfExtras = extras;
 
   return new Promise((resolve, reject) => {
     exporter.parse(
-      scene,
+      exportRoot,
       gltf => {
-        scene.userData.gltfExtras = prevExtras;
+        exportRoot.userData.gltfExtras = prevExtras;
         // parse returns an ArrayBuffer (binary glTF = GLB) when binary: true
         resolve(gltf);
       },
       err => {
-        scene.userData.gltfExtras = prevExtras;
+        exportRoot.userData.gltfExtras = prevExtras;
         reject(err);
       },
-      { binary: true, embedImages: false },
+      // onlyVisible: false — geometry snapshots are kept invisible so they
+      // cost nothing to render, but they ARE the export payload.
+      { binary: true, embedImages: false, onlyVisible: false },
     );
   });
 }
 
 // ── Serialisation helpers ─────────────────────────────────────────────────
 
-function _serialisePin(pin) {
+function _serialisePin(pin, worldToAnchorLocal) {
   return {
     id:                   pin.id,
     source:               pin.source,
     label:                pin.label,
     position:             pin.worldPosition,
+    position_anchor_local: worldToAnchorLocal
+      ? worldToAnchorLocal(pin.worldPosition)
+      : pin.worldPosition,
     rotation:             pin.worldRotation,
     confidence:           pin.confidence,
     bbox_cxcywh:          pin.bboxCxCyWH,
@@ -93,14 +108,16 @@ function _serialisePin(pin) {
 }
 
 function _computeFloorplan(pinManager) {
-  const allPins = pinManager.pins;
-  if (!allPins.length) return null;
+  // Fallback pins are distance guesses along a ray — excluding them keeps
+  // the room bounds honest.
+  const placedPins = pinManager.pins.filter(p => p.hitType !== 'fallback');
+  if (!placedPins.length) return null;
 
   let minX = Infinity, maxX = -Infinity;
   let minZ = Infinity, maxZ = -Infinity;
   let minY = Infinity, maxY = -Infinity;
 
-  for (const p of allPins) {
+  for (const p of placedPins) {
     const { x, y, z } = p.worldPosition;
     if (x < minX) minX = x; if (x > maxX) maxX = x;
     if (y < minY) minY = y; if (y > maxY) maxY = y;

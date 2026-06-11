@@ -1,33 +1,38 @@
 /**
- * Pipeline B — Camera → CV Server (Florence / GDino / SAM2) → Raycast → SpatialPins.
+ * Pipeline B — Camera → CV Server (Florence / GDino / SAM2) → local raycast → SpatialPins.
  *
  * Flow:
- *   1. Capture current video frame from the CameraSource entity.
- *   2. Send to CV server (Florence caption + OD, then GDino detect, then SAM2 segment)
+ *   1. Snapshot the viewer pose, then capture the current video frame from the
+ *      CameraSource entity (async JPEG encode off the main thread).
+ *   2. Send to CV server (Florence caption + OD, GDino detect, or GDino+SAM2)
  *      depending on the active ModelPreset.
- *   3. For each detection, create a temporary EnvironmentRaycastTarget entity
- *      oriented toward the detection direction (using HFOV/VFOV from the XR projection matrix).
- *   4. On the next frame when the entity has a hit-test result, promote it to a
- *      permanent SpatialPin and remove the temporary entity.
+ *   3. For each detection, compute a world-space ray from the *snapshotted*
+ *      pose (not the current one — the CV round trip takes seconds and the
+ *      user's head moves) using a pinhole camera model.
+ *   4. Raycast synchronously against the scene-understanding geometry
+ *      (SceneRaycaster). On a hit, the pin lands on the real surface; on a
+ *      miss, it falls back to a fixed distance along the ray.
  *
- * If the hit-test misses (no XR hit), fall back to placing the pin at
- * previewDistance metres from the camera.
+ * Camera intrinsics: the passthrough RGB camera has its own FOV, distinct
+ * from the render-eye projection. There is no browser API to query it, so the
+ * horizontal FOV defaults to DEFAULT_CAMERA_HFOV_DEG and can be calibrated
+ * per device via the `?hfov=<degrees>` URL parameter. The vertical FOV is
+ * derived from the video aspect ratio via the pinhole model.
  */
 
 import * as THREE from 'three';
-import {
-  EnvironmentRaycastTarget,
-  RaycastSpace,
-  CameraSource,
-  CameraFacing,
-} from '@iwsdk/core';
+import { CameraSource, CameraFacing } from '@iwsdk/core';
 import { SpatialPin, PinSource } from '../spatial/SpatialPin.js';
-import { videoToBase64Jpeg } from '../cv/CvServerClient.js';
+import { encodeVideoFrame } from '../cv/CaptureEncoder.js';
 import { ModelPreset, appState } from '../app/AppState.js';
+import { SceneRaycaster } from './SceneRaycaster.js';
 
-// Default FOV when XR projection matrix is unavailable
-const DEFAULT_HFOV = (100 * Math.PI) / 180;
-const DEFAULT_VFOV = (85  * Math.PI) / 180;
+/** Approximate Quest 3 passthrough-camera horizontal FOV; tune with ?hfov= */
+const DEFAULT_CAMERA_HFOV_DEG = 80;
+/** Pin distance along the ray when no scene geometry is hit (metres). */
+const DEFAULT_FALLBACK_DISTANCE = 2.5;
+/** Maximum scene-raycast distance (metres). */
+const MAX_RAY_DISTANCE = 10;
 
 let _captureSeq = 0;
 
@@ -44,12 +49,25 @@ export class PipelineB {
 
     /** @type {import('@iwsdk/core').Entity|null} Camera entity with CameraSource component */
     this._cameraEntity = null;
-    /** Pending raycast entities waiting for a hit-test result */
-    this._pending = [];
-    /** Calibrated FOV from XR projection matrix */
-    this._hfov = DEFAULT_HFOV;
-    this._vfov = DEFAULT_VFOV;
-    this._fovCalibrated = false;
+
+    this._raycaster = new SceneRaycaster();
+
+    this._hfov = (_hfovOverrideDeg() ?? DEFAULT_CAMERA_HFOV_DEG) * Math.PI / 180;
+    this._vfov = this._deriveVfov(16 / 9);
+
+    /** Pose at the moment of the last frame capture (world space). */
+    this._capturePos  = new THREE.Vector3();
+    this._captureQuat = new THREE.Quaternion();
+  }
+
+  /** Horizontal FOV of the passthrough camera model (radians). */
+  get hfov() { return this._hfov; }
+  /** Vertical FOV of the passthrough camera model (radians). */
+  get vfov() { return this._vfov; }
+
+  /** Viewer pose snapshotted at the last capture. */
+  get lastCapturePose() {
+    return { position: this._capturePos.clone(), quaternion: this._captureQuat.clone() };
   }
 
   // ── Camera entity setup ───────────────────────────────────────────────────
@@ -60,7 +78,6 @@ export class PipelineB {
    */
   initCameraEntity() {
     const { world } = this;
-    // Create a dummy Object3D to anchor the entity
     const anchor = new THREE.Object3D();
     anchor.name = 'pipeline-b-camera-anchor';
     world.scene.add(anchor);
@@ -75,189 +92,165 @@ export class PipelineB {
     return this._cameraEntity;
   }
 
-  // ── FOV calibration from XR projection matrix ─────────────────────────────
-
-  calibrateFOV() {
-    if (this._fovCalibrated) return;
-    try {
-      const xrCam = this.world.renderer.xr.getCamera();
-      const m     = xrCam.projectionMatrix.elements;
-      if (m[0] && m[5]) {
-        this._hfov = 2 * Math.atan(1 / Math.abs(m[0]));
-        this._vfov = 2 * Math.atan(1 / Math.abs(m[5]));
-        const h = ((this._hfov * 180) / Math.PI).toFixed(1);
-        const v = ((this._vfov * 180) / Math.PI).toFixed(1);
-        console.log(`[PipelineB] XR FOV detected: H=${h}° V=${v}°`);
-        this._fovCalibrated = true;
-      }
-    } catch (_) {}
-  }
-
-  // ── Per-frame: resolve pending raycasts ───────────────────────────────────
-
-  /**
-   * Call every frame. Resolves any pending EnvironmentRaycastTarget entities
-   * that now have a hit result, converts them to SpatialPins.
-   */
-  resolvePending() {
-    const stillPending = [];
-    for (const item of this._pending) {
-      const { entity, pin, createdFrame } = item;
-      const hitResult = entity.getValue(EnvironmentRaycastTarget, 'xrHitTestResult');
-
-      if (hitResult) {
-        // Hit — use the entity's world position (set by EnvironmentRaycastSystem)
-        const obj = entity.object3D;
-        if (obj) {
-          pin.worldPosition = { x: obj.position.x, y: obj.position.y, z: obj.position.z };
-          pin.worldRotation = { x: obj.quaternion.x, y: obj.quaternion.y, z: obj.quaternion.z, w: obj.quaternion.w };
-          pin.hitType = 'plane';
-          pin.placementConfidence = 0.95;
-        }
-        this.pinManager.addOrUpdate(pin);
-        entity.destroy();
-      } else if (Date.now() - createdFrame > 500) {
-        // Timeout — fall back to previewDistance
-        const d = appState.previewDistance;
-        if (d > 0) {
-          const dir = _directionFromAngles(item.angleH, item.angleV);
-          const cam = this.world.camera;
-          const camPos = new THREE.Vector3().setFromMatrixPosition(cam.matrixWorld);
-          const worldDir = dir.clone().applyQuaternion(cam.quaternion);
-          const pos = camPos.addScaledVector(worldDir, d);
-          pin.worldPosition = { x: pos.x, y: pos.y, z: pos.z };
-          pin.hitType       = 'fallback';
-          pin.placementConfidence = 0.5;
-          this.pinManager.addOrUpdate(pin);
-        }
-        entity.destroy();
-      } else {
-        stillPending.push(item);
-      }
-    }
-    this._pending = stillPending;
-  }
-
   // ── Main capture method ────────────────────────────────────────────────────
 
   /**
-   * Capture one frame, run the CV server pipeline, and schedule raycasts.
+   * Capture one frame, run the CV server pipeline, and place pins by
+   * raycasting against the scene geometry from the capture-time pose.
+   *
    * @param {string} captureId
-   * @returns {Promise<void>}
+   * @param {Array<{object: THREE.Object3D, hitType: 'plane'|'mesh'}>} raycastTargets
+   *        collected via collectRaycastTargets() from the caller's queries
+   * @returns {Promise<{pins: SpatialPin[], rays: Array<{origin: THREE.Vector3, dir: THREE.Vector3}>}>}
    */
-  async capture(captureId) {
-    this.calibrateFOV();
+  async capture(captureId, raycastTargets = []) {
+    const empty = { pins: [], rays: [] };
 
-    // Get video element from CameraSource
     const videoEl = this._cameraEntity?.getValue(CameraSource, 'videoElement');
     if (!videoEl || videoEl.readyState < 2) {
       console.warn('[PipelineB] Camera not ready');
-      return;
+      return empty;
     }
 
-    const base64 = videoToBase64Jpeg(videoEl, 0.7);
+    // Freeze the viewer pose at the same moment the frame is sampled —
+    // by the time the CV server responds, the head will have moved.
+    this.world.camera.getWorldPosition(this._capturePos);
+    this.world.camera.getWorldQuaternion(this._captureQuat);
+    this._vfov = this._deriveVfov(
+      (videoEl.videoWidth || 1280) / (videoEl.videoHeight || 720),
+    );
+
+    const base64 = await encodeVideoFrame(videoEl, 0.7);
     const seq    = ++_captureSeq;
 
     let detections = [];
-
     try {
-      // ── Florence ──────────────────────────────────────────────────────
-      if (appState.modelPreset === ModelPreset.Florence ||
-          appState.modelPreset === ModelPreset.GDino    ||
-          appState.modelPreset === ModelPreset.SAM2) {
-
-        if (appState.modelPreset === ModelPreset.Florence) {
-          const [cap, od] = await Promise.all([
-            this.cvClient.florence(base64, '<MORE_DETAILED_CAPTION>'),
-            this.cvClient.florence(base64, '<OD>'),
-          ]);
-          const caption = cap.result?.['<MORE_DETAILED_CAPTION>'] ?? '';
-          const odItems = od.result?.['<OD>'] ?? {};
-          // Florence OD returns {bboxes, labels} or similar — normalise
-          const labels  = odItems.labels  ?? [];
-          const bboxes  = odItems.bboxes  ?? [];
-          detections = labels.map((lbl, i) => {
-            const b = bboxes[i] ?? [0, 0, 1, 1];
-            const cx = (b[0] + b[2]) / 2 / (videoEl.videoWidth  || 1280);
-            const cy = (b[1] + b[3]) / 2 / (videoEl.videoHeight || 720);
-            const bw = (b[2] - b[0]) / (videoEl.videoWidth  || 1280);
-            const bh = (b[3] - b[1]) / (videoEl.videoHeight || 720);
-            return { label: lbl, cx, cy, confidence: 0.9, bbox_cxcywh: [cx, cy, bw, bh], florenceCaption: caption };
-          });
-        }
-
-        // ── GDino detect ────────────────────────────────────────────────
-        if (appState.modelPreset === ModelPreset.GDino) {
-          const resp = await this.cvClient.detect(base64);
-          detections = resp.detections ?? [];
-        }
-
-        // ── SAM2 segment ────────────────────────────────────────────────
-        if (appState.modelPreset === ModelPreset.SAM2) {
-          // First detect with GDino to get boxes, then segment
-          const detectResp = await this.cvClient.detect(base64);
-          const dets       = detectResp.detections ?? [];
-          if (dets.length) {
-            const segResp = await this.cvClient.segment(base64, dets.map(d => d.bbox_cxcywh));
-            detections = dets.map((d, i) => ({
-              ...d,
-              maskRleJson: segResp.segments?.[i]
-                ? JSON.stringify(segResp.segments[i].rle)
-                : null,
-            }));
-          }
-        }
-      }
+      detections = await this._runModels(base64, videoEl);
     } catch (err) {
       console.error('[PipelineB] CV server error:', err);
-      return;
+      return empty;
     }
 
-    // ── Create EnvironmentRaycastTarget for each detection ─────────────────
+    // ── Place pins via local scene raycast from the snapshotted pose ────────
+    const pins = [];
+    const rays = [];
+    const fallbackDist =
+      appState.previewDistance > 0 ? appState.previewDistance : DEFAULT_FALLBACK_DISTANCE;
+
     let frameIdx = 0;
     for (const det of detections) {
-      const angleH = -(det.cx - 0.5) * this._hfov;
-      const angleV = -(det.cy - 0.5) * this._vfov;
-
-      const offsetQuat = new THREE.Quaternion()
-        .setFromEuler(new THREE.Euler(angleV, angleH, 0, 'YXZ'));
-
-      // Dummy mesh for the entity
-      const marker = new THREE.Object3D();
-      marker.name  = `raycast-target-${seq}-${frameIdx}`;
-      this.world.scene.add(marker);
-
-      const entity = this.world.createTransformEntity(marker);
-      entity.addComponent(EnvironmentRaycastTarget, {
-        space:            RaycastSpace.Viewer,
-        maxDistance:      appState.previewDistance > 0 ? appState.previewDistance : 3,
-        offsetQuaternion: offsetQuat,
-      });
+      const dir = this._detectionDirection(det.cx, det.cy);
+      rays.push({ origin: this._capturePos.clone(), dir: dir.clone() });
 
       const pin = new SpatialPin();
-      pin.source           = PinSource.CvServer;
-      pin.label            = det.label ?? 'object';
-      pin.confidence       = det.confidence ?? 0;
-      pin.bboxCxCyWH       = det.bbox_cxcywh ?? null;
-      pin.trackId          = `${seq}-${frameIdx}`;
-      pin.captureId        = captureId;
-      pin.captureSessionId = appState.captureSessionId;
+      pin.source            = PinSource.CvServer;
+      pin.label             = det.label ?? 'object';
+      pin.confidence        = det.confidence ?? 0;
+      pin.bboxCxCyWH        = det.bbox_cxcywh ?? null;
+      pin.trackId           = `${seq}-${frameIdx}`;
+      pin.captureId         = captureId;
+      pin.captureSessionId  = appState.captureSessionId;
       pin.captureFrameIndex = frameIdx++;
-      pin.florenceCaption  = det.florenceCaption ?? null;
-      pin.maskRleJson      = det.maskRleJson     ?? null;
-      // worldPosition will be set when hit resolves
+      pin.florenceCaption   = det.florenceCaption ?? null;
+      pin.maskRleJson       = det.maskRleJson     ?? null;
 
-      this._pending.push({ entity, pin, createdFrame: Date.now(), angleH, angleV });
+      const hit = this._raycaster.raycast(this._capturePos, dir, raycastTargets, MAX_RAY_DISTANCE);
+      if (hit) {
+        pin.worldPosition       = { x: hit.point.x, y: hit.point.y, z: hit.point.z };
+        pin.hitType             = hit.hitType;
+        pin.placementConfidence = 0.95;
+      } else {
+        const p = this._capturePos.clone().addScaledVector(dir, fallbackDist);
+        pin.worldPosition       = { x: p.x, y: p.y, z: p.z };
+        pin.hitType             = 'fallback';
+        pin.placementConfidence = 0.5;
+      }
+      // Orient the pin to face back along the capture ray.
+      pin.worldRotation = {
+        x: this._captureQuat.x, y: this._captureQuat.y,
+        z: this._captureQuat.z, w: this._captureQuat.w,
+      };
+
+      this.pinManager.addOrUpdate(pin);
+      pins.push(pin);
     }
+
+    return { pins, rays };
+  }
+
+  // ── Private ───────────────────────────────────────────────────────────────
+
+  /**
+   * Run the active model preset against an encoded frame.
+   * @returns {Promise<Array<object>>} normalised detections
+   */
+  async _runModels(base64, videoEl) {
+    if (appState.modelPreset === ModelPreset.Florence) {
+      const [cap, od] = await Promise.all([
+        this.cvClient.florence(base64, '<MORE_DETAILED_CAPTION>'),
+        this.cvClient.florence(base64, '<OD>'),
+      ]);
+      const caption = cap.result?.['<MORE_DETAILED_CAPTION>'] ?? '';
+      const odItems = od.result?.['<OD>'] ?? {};
+      const labels  = odItems.labels ?? [];
+      const bboxes  = odItems.bboxes ?? [];
+      const vw = videoEl.videoWidth  || 1280;
+      const vh = videoEl.videoHeight || 720;
+      return labels.map((lbl, i) => {
+        const b  = bboxes[i] ?? [0, 0, 1, 1];
+        const cx = (b[0] + b[2]) / 2 / vw;
+        const cy = (b[1] + b[3]) / 2 / vh;
+        const bw = (b[2] - b[0]) / vw;
+        const bh = (b[3] - b[1]) / vh;
+        return { label: lbl, cx, cy, confidence: 0.9, bbox_cxcywh: [cx, cy, bw, bh], florenceCaption: caption };
+      });
+    }
+
+    if (appState.modelPreset === ModelPreset.GDino) {
+      const resp = await this.cvClient.detect(base64);
+      return resp.detections ?? [];
+    }
+
+    if (appState.modelPreset === ModelPreset.SAM2) {
+      const detectResp = await this.cvClient.detect(base64);
+      const dets       = detectResp.detections ?? [];
+      if (!dets.length) return [];
+      const segResp = await this.cvClient.segment(base64, dets.map(d => d.bbox_cxcywh));
+      return dets.map((d, i) => ({
+        ...d,
+        maskRleJson: segResp.segments?.[i]
+          ? JSON.stringify(segResp.segments[i].rle)
+          : null,
+      }));
+    }
+
+    return [];
+  }
+
+  /**
+   * World-space unit direction for a normalised image coordinate, using the
+   * pinhole model from the capture-time pose. (cx, cy) ∈ [0,1], origin top-left.
+   * @returns {THREE.Vector3}
+   */
+  _detectionDirection(cx, cy) {
+    const x = (cx - 0.5) * 2 * Math.tan(this._hfov / 2);
+    const y = -(cy - 0.5) * 2 * Math.tan(this._vfov / 2);
+    return new THREE.Vector3(x, y, -1).normalize().applyQuaternion(this._captureQuat);
+  }
+
+  /** Pinhole-consistent vertical FOV for the given aspect ratio. */
+  _deriveVfov(aspect) {
+    return 2 * Math.atan(Math.tan(this._hfov / 2) / aspect);
   }
 }
 
-// ── Helper ────────────────────────────────────────────────────────────────
-
-function _directionFromAngles(angleH, angleV) {
-  return new THREE.Vector3(
-    Math.sin(angleH) * Math.cos(angleV),
-    Math.sin(angleV),
-    -Math.cos(angleH) * Math.cos(angleV),
-  ).normalize();
+/** Optional per-device calibration via `?hfov=<degrees>`. */
+function _hfovOverrideDeg() {
+  try {
+    const v = new URLSearchParams(globalThis.location?.search ?? '').get('hfov');
+    const deg = v ? Number(v) : NaN;
+    return Number.isFinite(deg) && deg > 20 && deg < 160 ? deg : null;
+  } catch {
+    return null;
+  }
 }

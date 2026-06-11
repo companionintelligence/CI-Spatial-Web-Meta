@@ -5,8 +5,15 @@
  * Respects DisplayMode: shown only when mode is SpatialLabel3D or Both.
  * Labels persist across captures; pins replaced via mergeByTrackId are moved.
  *
+ * Labels are parented under the scan anchor root when provided, so they
+ * re-localize with the persistent anchor across sessions.
+ *
+ * GPU-cost notes (Quest 3 is tile-based — draw calls and texture uploads
+ * dominate): disc geometry and per-color materials are shared across all
+ * pins, and label canvas textures skip mipmap generation.
+ *
  * Usage:
- *   const renderer = new SpatialLabel3DRenderer(world, pinManager);
+ *   const renderer = new SpatialLabel3DRenderer(world, pinManager, scanRoot);
  *   renderer.setDisplayMode(appState.displayMode); // call when mode changes
  *   renderer.update();  // call every frame to billboard labels
  */
@@ -21,17 +28,35 @@ const PIN_COLOR = {
   [PinSource.MetaScene]: 0x5599ff,   // blue
 };
 
+// Shared across all pins — never disposed per pin.
+const _discGeometry  = new THREE.CircleGeometry(0.025, 20);
+const _labelGeometry = new THREE.PlaneGeometry(0.16, 0.04);
+const _discMaterials = new Map();   // color → MeshBasicMaterial
+
+function _discMaterial(color) {
+  let mat = _discMaterials.get(color);
+  if (!mat) {
+    mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+    _discMaterials.set(color, mat);
+  }
+  return mat;
+}
+
 export class SpatialLabel3DRenderer {
   /**
    * @param {import('@iwsdk/core').World} world
    * @param {import('../spatial/SpatialPinManager.js').SpatialPinManager} pinManager
+   * @param {import('../spatial/ScanAnchorRoot.js').ScanAnchorRoot} [scanRoot]
    */
-  constructor(world, pinManager) {
+  constructor(world, pinManager, scanRoot = null) {
     this.world      = world;
     this.pinManager = pinManager;
+    this._parent    = scanRoot?.labelsRoot ?? world.scene;
     this._meshMap   = new Map();   // pinId → THREE.Group
     this._visible   = true;
     this._headPos   = new THREE.Vector3();
+    this._tmpVec    = new THREE.Vector3();
+    this._tmpQuat   = new THREE.Quaternion();
 
     // Listen for pin store events
     pinManager.addEventListener('add',    e => this._onCreate(e.pin));
@@ -49,7 +74,7 @@ export class SpatialLabel3DRenderer {
 
   /** Call every frame — billboards labels toward the camera. */
   update() {
-    if (!this._visible) return;
+    if (!this._visible || !this._meshMap.size) return;
     this.world.camera.getWorldPosition(this._headPos);
     this._meshMap.forEach(group => {
       const lbl = group.userData.labelMesh;
@@ -57,32 +82,50 @@ export class SpatialLabel3DRenderer {
     });
   }
 
+  /**
+   * Rebuild every label group from the pin store. Used after WebGL context
+   * restore — the pin manager is the source of truth for visual state.
+   */
+  rebuildAll() {
+    this._onClearAll();
+    for (const pin of this.pinManager.pins) this._onCreate(pin);
+  }
+
   // ── Private ───────────────────────────────────────────────────────────────
+
+  _setTransform(group, pin) {
+    // Pins store world-space poses; the group lives under the anchored scan
+    // root, so convert into parent-local space.
+    this._parent.updateWorldMatrix(true, false);
+    this._tmpVec.set(pin.worldPosition.x, pin.worldPosition.y, pin.worldPosition.z);
+    this._parent.worldToLocal(this._tmpVec);
+    group.position.copy(this._tmpVec);
+
+    const q = pin.worldRotation;
+    this._tmpQuat.set(q.x, q.y, q.z, q.w);
+    const parentQuat = new THREE.Quaternion();
+    this._parent.getWorldQuaternion(parentQuat);
+    group.quaternion.copy(parentQuat.invert().multiply(this._tmpQuat));
+  }
 
   _onCreate(pin) {
     const group = _buildLabelGroup(pin, PIN_COLOR[pin.source] ?? 0xffffff);
     group.visible = this._visible;
-    group.position.set(pin.worldPosition.x, pin.worldPosition.y, pin.worldPosition.z);
-
-    const q = pin.worldRotation;
-    group.quaternion.set(q.x, q.y, q.z, q.w);
-
-    this.world.scene.add(group);
+    this._setTransform(group, pin);
+    this._parent.add(group);
     this._meshMap.set(pin.id, group);
   }
 
   _onUpdate(pin) {
     const group = this._meshMap.get(pin.id);
     if (!group) return;
-    group.position.set(pin.worldPosition.x, pin.worldPosition.y, pin.worldPosition.z);
-    const q = pin.worldRotation;
-    group.quaternion.set(q.x, q.y, q.z, q.w);
+    this._setTransform(group, pin);
   }
 
   _onRemove(pinId) {
     const group = this._meshMap.get(pinId);
     if (group) {
-      this.world.scene.remove(group);
+      this._parent.remove(group);
       _disposeGroup(group);
       this._meshMap.delete(pinId);
     }
@@ -90,7 +133,7 @@ export class SpatialLabel3DRenderer {
 
   _onClearAll() {
     this._meshMap.forEach(group => {
-      this.world.scene.remove(group);
+      this._parent.remove(group);
       _disposeGroup(group);
     });
     this._meshMap.clear();
@@ -103,11 +146,8 @@ function _buildLabelGroup(pin, color) {
   const group = new THREE.Group();
   group.name  = `spatial-label-${pin.id}`;
 
-  // Disc marker
-  const disc = new THREE.Mesh(
-    new THREE.CircleGeometry(0.025, 20),
-    new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide }),
-  );
+  // Disc marker — shared geometry + material
+  const disc = new THREE.Mesh(_discGeometry, _discMaterial(color));
   group.add(disc);
 
   // Text label canvas
@@ -131,10 +171,12 @@ function _buildLabelGroup(pin, color) {
   ctx.font      = '18px sans-serif';
   ctx.fillText(subLabel, 12, 64);
 
-  const tex    = new THREE.CanvasTexture(canvas);
-  const lblGeo = new THREE.PlaneGeometry(0.16, 0.04);
-  const lblMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false });
-  const lblMesh = new THREE.Mesh(lblGeo, lblMat);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+
+  const lblMat  = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false });
+  const lblMesh = new THREE.Mesh(_labelGeometry, lblMat);
   lblMesh.position.y = 0.05;
   lblMesh.renderOrder = 3;
   group.add(lblMesh);
@@ -144,11 +186,11 @@ function _buildLabelGroup(pin, color) {
 }
 
 function _disposeGroup(group) {
-  group.traverse(obj => {
-    if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) {
-      if (obj.material.map) obj.material.map.dispose();
-      obj.material.dispose();
-    }
-  });
+  // Only per-pin resources (label texture + material) are disposed; disc
+  // geometry/materials and label geometry are shared across all pins.
+  const lbl = group.userData.labelMesh;
+  if (lbl) {
+    if (lbl.material.map) lbl.material.map.dispose();
+    lbl.material.dispose();
+  }
 }
