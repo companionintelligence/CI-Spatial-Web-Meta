@@ -24,6 +24,13 @@ import { normalizeScan, updatePin, removePin, scanToJson } from './scanMetadata.
 import { buildScanReport } from '../export/ScanReport.js';
 import { saveBlob } from '../export/GltfDownload.js';
 import { TEST_HOMES, homeToScanFixture } from '../fixtures/homes.js';
+import * as connection from '../net/ServerConnection.js';
+
+// Pick up `?server=`/`?token=` and finish an OAuth redirect before the
+// server-scans panel makes its first request.
+connection.applyUrlParams();
+connection.completeOAuthLogin().catch(err =>
+  console.error('[Viewer] OAuth sign-in failed:', err));
 
 // Light (ci.computer) palette for the 3D view
 const PIN_COLOR  = { CvServer: 0x0a7d43, MetaScene: 0x2b5fd9 };
@@ -432,12 +439,51 @@ window.addEventListener('drop', (e) => {
   if (file) loadFile(file);
 });
 
-// ── Server scans (CV server glTF store, via the dev-server /v1 proxy) ──────
+// ── Server connection (URL + OAuth) ─────────────────────────────────────
+
+const connUrlInput  = document.getElementById('conn-url');
+const connStatusEl  = document.getElementById('conn-status');
+const connOauthBtn  = document.getElementById('conn-oauth-connect');
+const connSignOutBtn = document.getElementById('conn-oauth-disconnect');
+
+function refreshConnStatus() {
+  const connected = connection.isConnected();
+  connSignOutBtn.style.display = connected ? '' : 'none';
+  const where = connection.getServerUrl() || 'same origin';
+  connStatusEl.textContent = connected ? `${where} · signed in` : where;
+}
+
+connUrlInput.value = connection.getServerUrl();
+document.getElementById('conn-save').addEventListener('click', () => {
+  connUrlInput.value = connection.setServerUrl(connUrlInput.value);
+  refreshConnStatus();
+  refreshServerScans();
+});
+
+if (connection.isOAuthConfigured()) {
+  connOauthBtn.addEventListener('click', () => {
+    connection.startOAuthLogin().catch(err => {
+      connStatusEl.textContent = `OAuth sign-in failed: ${err?.message ?? err}`;
+    });
+  });
+} else {
+  connOauthBtn.remove();
+}
+
+connSignOutBtn.addEventListener('click', () => {
+  connection.disconnect();
+  refreshConnStatus();
+  refreshServerScans();
+});
+
+refreshConnStatus();
+
+// ── Server scans (CV/CI server glTF store) ─────────────────────────────────
 
 async function refreshServerScans() {
   const list = document.getElementById('server-scans');
   try {
-    const res = await fetch('/v1/gltf');
+    const res = await fetch(`${connection.getServerUrl()}/v1/gltf`, { headers: connection.getAuthHeader() });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const { files = [] } = await res.json();
 
@@ -462,7 +508,9 @@ async function refreshServerScans() {
 
 async function loadServerScan(name) {
   try {
-    const res = await fetch(`/v1/gltf/${encodeURIComponent(name)}`);
+    const res = await fetch(`${connection.getServerUrl()}/v1/gltf/${encodeURIComponent(name)}`, {
+      headers: connection.getAuthHeader(),
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     await loadGlb(await res.arrayBuffer());
   } catch (err) {

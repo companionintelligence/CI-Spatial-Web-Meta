@@ -19,6 +19,9 @@ export class CvServerClient {
    * @param {number}  [opts.boxThreshold=0.35]
    * @param {number}  [opts.textThreshold=0.25]
    * @param {string}  [opts.detectionPrompt]
+   * @param {() => object} [opts.getAuthHeader]  returns extra headers (e.g. a
+   *   Bearer token) merged into every request; defaults to none, for a
+   *   trusted local server that needs no auth.
    */
   constructor({
     baseUrl        = '',
@@ -26,12 +29,19 @@ export class CvServerClient {
     boxThreshold   = 0.35,
     textThreshold  = 0.25,
     detectionPrompt = 'object . person . chair . table . cup . bottle . door . screen . shelf . bed . sofa',
+    getAuthHeader  = () => ({}),
   } = {}) {
     this.baseUrl         = baseUrl.replace(/\/$/, '');
     this.timeoutMs       = timeoutMs;
     this.boxThreshold    = boxThreshold;
     this.textThreshold   = textThreshold;
     this.detectionPrompt = detectionPrompt;
+    this.getAuthHeader   = getAuthHeader;
+  }
+
+  /** Point at a different server at runtime (e.g. after the user saves a new URL). */
+  setBaseUrl(baseUrl) {
+    this.baseUrl = (baseUrl ?? '').replace(/\/$/, '');
   }
 
   // ── Health ──────────────────────────────────────────────────────────────
@@ -109,6 +119,7 @@ export class CvServerClient {
 
     const res = await this._fetchWithTimeout(`${this.baseUrl}/v1/gltf`, {
       method: 'POST',
+      headers: this.getAuthHeader(),
       body: form,
     });
     if (!res.ok) throw new Error(`glTF upload failed: ${res.status} ${res.statusText}`);
@@ -120,7 +131,7 @@ export class CvServerClient {
   async _postJson(path, body) {
     const res = await this._fetchWithTimeout(`${this.baseUrl}${path}`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...this.getAuthHeader() },
       body:    JSON.stringify(body),
     });
     if (!res.ok) {
@@ -131,7 +142,7 @@ export class CvServerClient {
   }
 
   async _get(path) {
-    return this._fetchWithTimeout(`${this.baseUrl}${path}`);
+    return this._fetchWithTimeout(`${this.baseUrl}${path}`, { headers: this.getAuthHeader() });
   }
 
   _fetchWithTimeout(url, opts = {}) {

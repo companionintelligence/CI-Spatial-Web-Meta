@@ -1,0 +1,22 @@
+"$schema" = "./node_modules/wrangler/config-schema.json"
+name = "ci-webxr-meta"
+compatibility_date = "2026-09-28"
+
+[observability]
+enabled = true
+
+# Static assets only — vite build (dist/index.html + dist/viewer.html) — no
+# Worker script needed.
+[assets]
+directory = "./dist"
+
+# Both candidate hostnames are wired so either can go live without another
+# deploy. Each needs the `ci.computer` zone active on this Cloudflare
+# account; drop whichever one you don't want once you've decided.
+[[routes]]
+pattern = "webxr.ci.computer"
+custom_domain = true
+
+[[routes]]
+pattern = "meta.ci.computer"
+custom_domain = true
