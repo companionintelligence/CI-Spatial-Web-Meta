@@ -14,7 +14,9 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
-    "test:all": "npm run test:unit && npm run test:e2e"
+    "test:all": "npm run test:unit && npm run test:e2e",
+    "deploy": "vite build && wrangler deploy",
+    "deploy:dry-run": "vite build && wrangler deploy --dry-run"
   },
   "dependencies": {
     "@iwsdk/core": "0.3.1",
@@ -27,6 +29,7 @@
     "iwer": "^2.1.1",
     "vite": "^6.0.0",
     "vite-plugin-mkcert": "^1.17.6",
-    "vitest": "^4.1.0"
+    "vitest": "^4.1.0",
+    "wrangler": "^4.142.0"
   }
 }

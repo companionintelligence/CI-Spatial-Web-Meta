@@ -88,6 +88,17 @@
       }
       #dropzone.hidden { display: none; }
       body.dragging #dropzone { color: var(--text); }
+      #conn-row { display: flex; gap: 6px; margin-bottom: 6px; }
+      #conn-row input {
+        flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 6px;
+        padding: 4px 6px; font: 12.5px system-ui, sans-serif; background: var(--bg); color: var(--text);
+      }
+      #conn-row button, #conn-oauth-connect, #conn-oauth-disconnect {
+        border-radius: 8px; padding: 4px 10px; font: 600 12.5px system-ui, sans-serif;
+        cursor: pointer; border: 1px solid var(--text); background: var(--bg); color: var(--text);
+      }
+      #conn-oauth-connect, #conn-oauth-disconnect { margin-right: 6px; margin-bottom: 6px; }
+      #conn-status { color: var(--text-2); font-size: 11px; }
     </style>
   </head>
   <body>
@@ -104,6 +115,14 @@
       <span class="hint">…or drag &amp; drop a companion-scan .glb</span>
     </header>
     <aside>
+      <h2>Server</h2>
+      <div id="conn-row">
+        <input id="conn-url" type="text" placeholder="Server URL (blank = same origin)" />
+        <button id="conn-save">Save</button>
+      </div>
+      <button id="conn-oauth-connect">Connect via OAuth</button>
+      <button id="conn-oauth-disconnect">Sign out</button>
+      <div id="conn-status"></div>
       <h2>Server scans <button id="scan-refresh" title="Refresh">⟳</button></h2>
       <ul id="server-scans"><li class="note">Checking server…</li></ul>
       <h2>Scan</h2>

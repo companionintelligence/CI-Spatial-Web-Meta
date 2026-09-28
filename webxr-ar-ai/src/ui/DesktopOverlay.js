@@ -9,6 +9,8 @@
  *   - Capture session id + last status message
  *   - Controller button legend
  *   - Export controls: download the scan GLB locally / open the desktop viewer
+ *   - Server connection: point the CV/CI server at a URL, or sign in via
+ *     OAuth (button hidden unless the deployment configures an issuer)
  *
  * The overlay hides itself while an immersive session is presenting and
  * reappears on session end (where it shows the scan gathered in-headset —
@@ -61,6 +63,12 @@ const STYLE = `
 }
 #co-overlay button:hover { background: #333333; }
 #co-status-line { min-height: 18px; margin-top: 8px; font-weight: 600; }
+#co-overlay .co-row { display: flex; gap: 6px; margin-bottom: 6px; }
+#co-overlay .co-row input {
+  flex: 1; min-width: 0; border: 1px solid #e4e4e4; border-radius: 6px;
+  padding: 4px 6px; font: 12.5px system-ui, sans-serif; color: #111111;
+}
+#co-conn-status { color: #6b6b6b; font-size: 11px; margin-top: 4px; }
 `;
 
 export class DesktopOverlay {
@@ -70,12 +78,15 @@ export class DesktopOverlay {
    * @param {import('../cv/CvServerClient.js').CvServerClient} deps.cvClient
    * @param {() => Promise<string>} deps.onDownload  triggers a local GLB download
    * @param {() => void} [deps.onClear]  clears pins, geometry snapshots, and storage
+   * @param {typeof import('../net/ServerConnection.js')} [deps.connection]
+   *   server URL + OAuth helpers; the Server section is omitted without it
    */
-  constructor({ pinManager, cvClient, onDownload, onClear = null }) {
+  constructor({ pinManager, cvClient, onDownload, onClear = null, connection = null }) {
     this.pinManager = pinManager;
     this.cvClient   = cvClient;
     this.onDownload = onDownload;
     this.onClear    = onClear;
+    this.connection = connection;
     this._root       = null;
     this._healthTimer = 0;
   }
@@ -102,6 +113,15 @@ export class DesktopOverlay {
         <tr><td>Session</td><td id="co-session" style="word-break: break-all;"></td></tr>
       </table>
       <div class="co-section">
+        <div class="co-row">
+          <input id="co-server-url" type="text" placeholder="Server URL (blank = same origin)" />
+          <button id="co-server-save">Save</button>
+        </div>
+        <button id="co-oauth-connect">Connect via OAuth</button>
+        <button id="co-oauth-disconnect">Sign out</button>
+        <div id="co-conn-status"></div>
+      </div>
+      <div class="co-section">
         <table>${LEGEND.map(([k, v]) => `<tr><td class="co-key">${k}</td><td>${v}</td></tr>`).join('')}</table>
       </div>
       <div class="co-section">
@@ -121,6 +141,8 @@ export class DesktopOverlay {
     const clearBtn = this._root.querySelector('#co-clear');
     if (this.onClear) clearBtn.addEventListener('click', () => this.onClear());
     else clearBtn.remove();
+
+    this._initConnection();
 
     // ── Live data ─────────────────────────────────────────────────────────
     const refreshPins = () => this._refreshPins();
@@ -153,6 +175,60 @@ export class DesktopOverlay {
   }
 
   // ── Private ───────────────────────────────────────────────────────────────
+
+  _initConnection() {
+    const urlInput   = this._root.querySelector('#co-server-url');
+    const saveBtn    = this._root.querySelector('#co-server-save');
+    const oauthBtn   = this._root.querySelector('#co-oauth-connect');
+    const signOutBtn = this._root.querySelector('#co-oauth-disconnect');
+
+    if (!this.connection) {
+      [urlInput.parentElement, oauthBtn, signOutBtn, this._root.querySelector('#co-conn-status')]
+        .forEach(el => el.remove());
+      return;
+    }
+
+    urlInput.value = this.connection.getServerUrl();
+    saveBtn.addEventListener('click', () => {
+      const clean = this.connection.setServerUrl(urlInput.value);
+      urlInput.value = clean;
+      this.cvClient.setBaseUrl(clean);
+      this._refreshConnStatus();
+      this._checkHealth();
+    });
+
+    if (this.connection.isOAuthConfigured()) {
+      oauthBtn.addEventListener('click', () => {
+        this.connection.startOAuthLogin().catch(err => {
+          appState.setStatus(`OAuth sign-in failed: ${err?.message ?? err}`, 'error');
+        });
+      });
+    } else {
+      oauthBtn.remove();
+    }
+
+    signOutBtn.addEventListener('click', () => {
+      this.connection.disconnect();
+      this._refreshConnStatus();
+      this._checkHealth();
+    });
+
+    this._refreshConnStatus();
+  }
+
+  _refreshConnStatus() {
+    if (!this.connection) return;
+    const signOutBtn = this._root?.querySelector('#co-oauth-disconnect');
+    const statusEl    = this._root?.querySelector('#co-conn-status');
+    if (!statusEl) return;
+
+    const connected = this.connection.isConnected();
+    if (signOutBtn) signOutBtn.style.display = connected ? '' : 'none';
+
+    const url = this.connection.getServerUrl();
+    const where = url || 'same origin';
+    statusEl.textContent = connected ? `${where} · signed in` : where;
+  }
 
   async _checkXrSupport() {
     const el = this._root.querySelector('#co-xr-status');

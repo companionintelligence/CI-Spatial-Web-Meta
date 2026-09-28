@@ -23,6 +23,7 @@ import {
 } from '@iwsdk/core';
 
 import { appState }                  from './app/AppState.js';
+import * as connection               from './net/ServerConnection.js';
 import { SpatialPin }                from './spatial/SpatialPin.js';
 import { SpatialPinManager }         from './spatial/SpatialPinManager.js';
 import { ScanAnchorRoot }            from './spatial/ScanAnchorRoot.js';
@@ -50,6 +51,15 @@ const ROOM_CAPTURE_GRACE_MS = 2000;
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 
+// Pick up `?server=`/`?token=` (quick-connect without typing on the Quest
+// keyboard) and finish an OAuth redirect, before anything talks to a server.
+connection.applyUrlParams();
+try {
+  await connection.completeOAuthLogin();
+} catch (err) {
+  console.error('[CompanionScan] OAuth sign-in failed:', err);
+}
+
 const container = /** @type {HTMLDivElement} */ (document.getElementById('scene-container'));
 
 const world = await World.create(container, {
@@ -75,7 +85,10 @@ const world = await World.create(container, {
 // ── Shared services ────────────────────────────────────────────────────────
 
 const pinManager  = new SpatialPinManager({ mergeByTrackId: true });
-const cvClient    = new CvServerClient({ baseUrl: import.meta.env.VITE_CV_BASE_URL ?? '' });
+const cvClient    = new CvServerClient({
+  baseUrl:       connection.getServerUrl(),
+  getAuthHeader: connection.getAuthHeader,
+});
 const scanRoot    = new ScanAnchorRoot(world);
 const scanStorage = new ScanStorage();
 
@@ -93,6 +106,7 @@ function clearScan() {
 const desktopOverlay = new DesktopOverlay({
   pinManager,
   cvClient,
+  connection,
   onDownload: () => downloadGlb(scanRoot, pinManager),
   onClear:    clearScan,
 });

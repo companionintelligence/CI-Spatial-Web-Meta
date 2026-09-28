@@ -29,6 +29,7 @@ from typing import Any
 
 import torch
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
 from pydantic import BaseModel
@@ -131,6 +132,21 @@ class FlorenceRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="Companion Scan CV Server", version="1.0.0")
+
+# The webxr-ar-ai frontend can be hosted elsewhere (e.g. a Cloudflare-deployed
+# instance) and pointed at this server over the public internet, so browser
+# fetches to /v1/* need CORS. Requests carry an `Authorization: Bearer` token
+# rather than cookies, so credentials don't need to be allowed. Defaults to
+# "*" (this server has no auth of its own — anyone who can reach it can
+# already call it); restrict to your deployed frontend's origin(s) with
+# CORS_ALLOW_ORIGINS, comma-separated, if this server is reachable publicly.
+_cors_origins = [o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "*").split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/v1/health")

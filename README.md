@@ -106,6 +106,33 @@ The app requests `immersive-ar` automatically (with `plane-detection`, `mesh-det
 
 **Optional camera calibration:** the passthrough camera's horizontal FOV defaults to 80° and can be tuned per device with a URL parameter, e.g. `https://<PC-IP>:8081/?hfov=75`. If pins land short of / past object edges consistently, adjust this value.
 
+## Connecting to a server
+
+By default the app talks to whatever's at the same origin — the Vite dev
+proxy locally (`/v1/*` → `cv-server`), or the deployed site's own origin in
+production. Point it at any other `cv-server`/CI-Server instance one of
+three ways (in-headset overlay, desktop viewer, or both — the setting is
+shared via `localStorage`):
+
+- **URL field** — the "Server" section on the desktop overlay / viewer
+  sidebar. Paste a base URL and hit Save; takes effect immediately, no
+  reload.
+- **One-time link** — open `https://<app>/?server=https://your-host` (add
+  `&token=...` too, for a server that hands out a static API key) once.
+  Meant for a Quest headset, where typing a URL on the in-headset keyboard
+  is painful — the app saves it and scrubs the query string.
+- **OAuth** — a "Connect via OAuth" button runs an Authorization Code + PKCE
+  flow (no client secret; safe for a static site) against a configurable
+  issuer. It only appears once a deployment sets `VITE_CI_OAUTH_AUTHORIZE_URL`,
+  `VITE_CI_OAUTH_TOKEN_URL`, and `VITE_CI_OAUTH_CLIENT_ID` (see
+  `webxr-ar-ai/.env.example`) — unconfigured, URL/token connection still
+  works fine on its own.
+
+Pointing at a server that isn't same-origin means the browser is making a
+cross-origin request, so that server needs CORS enabled for your app's
+origin — `cv-server` supports this out of the box via `CORS_ALLOW_ORIGINS`
+(see `cv-server/docker-compose.yml`).
+
 ## Desktop tools
 
 - **Status overlay** — the 2D page (desktop browser, or the Quest browser window before entering AR) shows live status: WebXR support, CV-server health, pin counts, the controller legend, and export buttons. It hides automatically while the immersive session is presenting.
@@ -234,3 +261,32 @@ behind Meta's immersive-web-emulator) and verifies CV-detection placement
 against rendered ground truth (`test-assets/cv/`). `cv-server/eval_images.py`
 scores the real models on the same frames. See
 [architecture.md](architecture.md#test-architecture).
+
+## Deploy
+
+The frontend (`webxr-ar-ai` — it's a static build, no server needed) deploys
+to Cloudflare Workers. `webxr-ar-ai/wrangler.toml` wires up both
+`webxr.ci.computer` and `meta.ci.computer` as Custom Domains on the same
+Worker, so either can go live without a second deploy — drop whichever
+route you don't want once you've decided. (`cv-server`, the GPU inference
+backend, isn't part of this deploy — it stays wherever it already runs;
+point the deployed frontend at it as described above.)
+
+```bash
+cd webxr-ar-ai
+npx wrangler login    # once per machine
+npm run deploy         # vite build && wrangler deploy
+```
+
+Or trigger it from CI — automatic deploys are gated the same way as
+[`ci.yml`](docs/CI.md), so `deploy.yml` only runs on demand:
+
+```bash
+gh workflow run deploy.yml --repo companionintelligence/CI-Spatial-Web-Meta --ref main
+```
+
+That needs two repo secrets (Settings → Secrets and variables → Actions →
+Secrets) — `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit) and
+`CLOUDFLARE_ACCOUNT_ID`. The OAuth/default-server build variables from
+`.env.example` are optional and read from **Variables** in the same repo
+settings tab if you want them baked into the deployed build.
