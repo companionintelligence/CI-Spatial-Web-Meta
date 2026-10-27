@@ -294,3 +294,23 @@ Secrets) — `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit) and
 `CLOUDFLARE_ACCOUNT_ID`. The OAuth/default-server build variables from
 `.env.example` are optional and read from **Variables** in the same repo
 settings tab if you want them baked into the deployed build.
+
+<!-- companion-hub-readme-deep-review -->
+
+## Runtime topology
+
+| Service | Default local address | Role |
+|---|---|---|
+| CV server | `http://localhost:8000` | Image/scene processing; weights are stored under `cv-server/weights/` |
+| Web frontend | `https://0.0.0.0:8081` | Browser/Quest client |
+| Remote CV server | Set `CV_SERVER_URL` | Allows frontend and processing to run on separate hosts |
+
+```mermaid
+flowchart LR
+  Quest[Quest 3 or desktop browser] --> Web[Spatial Web Meta frontend]
+  Web --> CV[CV server and model weights]
+  Web --> Export[Scene export] 
+```
+
+When the CV service is on another machine, set `CV_SERVER_URL` to a reachable host and use the HTTPS frontend route needed for camera access. The CV server's own README documents weight installation and model-specific requirements.
+
