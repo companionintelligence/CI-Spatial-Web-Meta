@@ -1,4 +1,8 @@
-# Companion Scan Quest
+<h1 align="center">Companion Scan Quest</h1>
+
+<p align="center"><strong>Quest 3 local world/space mapper — combines WebXR Scene Understanding with a local CV server</strong></p>
+
+<p align="center"><a href="#quick-start">Get started</a> · <a href="https://docs.ci.computer/docs/reference/open-source-systems">Systems map</a></p>
 
 **Companion Intelligence** · Quest 3 local world/space mapper — combines **WebXR Scene Understanding** with a **local CV server** (Grounding DINO, SAM 2, Florence-2) to produce a glTF export (plus a Markdown scan report) with rich spatial metadata, re-localizable across sessions via a **persistent WebXR anchor**.
 
@@ -290,3 +294,23 @@ Secrets) — `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit) and
 `CLOUDFLARE_ACCOUNT_ID`. The OAuth/default-server build variables from
 `.env.example` are optional and read from **Variables** in the same repo
 settings tab if you want them baked into the deployed build.
+
+<!-- companion-hub-readme-deep-review -->
+
+## Runtime topology
+
+| Service | Default local address | Role |
+|---|---|---|
+| CV server | `http://localhost:8000` | Image/scene processing; weights are stored under `cv-server/weights/` |
+| Web frontend | `https://0.0.0.0:8081` | Browser/Quest client |
+| Remote CV server | Set `CV_SERVER_URL` | Allows frontend and processing to run on separate hosts |
+
+```mermaid
+flowchart LR
+  Quest[Quest 3 or desktop browser] --> Web[Spatial Web Meta frontend]
+  Web --> CV[CV server and model weights]
+  Web --> Export[Scene export] 
+```
+
+When the CV service is on another machine, set `CV_SERVER_URL` to a reachable host and use the HTTPS frontend route needed for camera access. The CV server's own README documents weight installation and model-specific requirements.
+
