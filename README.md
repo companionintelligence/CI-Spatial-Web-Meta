@@ -1,4 +1,8 @@
-# Companion Scan Quest
+<h1 align="center">Companion Scan Quest</h1>
+
+<p align="center"><strong>Quest 3 local world/space mapper — combines WebXR Scene Understanding with a local CV server</strong></p>
+
+<p align="center"><a href="#quick-start">Get started</a></p>
 
 **Companion Intelligence** · Quest 3 local world/space mapper — combines **WebXR Scene Understanding** with a **local CV server** (Grounding DINO, SAM 2, Florence-2) to produce a glTF export (plus a Markdown scan report) with rich spatial metadata, re-localizable across sessions via a **persistent WebXR anchor**.
 
