@@ -2,7 +2,16 @@
 
 <p align="center"><strong>Quest 3 local world/space mapper — combines WebXR Scene Understanding with a local CV server</strong></p>
 
-<p align="center"><a href="#quick-start">Get started</a> · <a href="https://docs.ci.computer/docs/reference/open-source-systems">Systems map</a></p>
+[![release](https://img.shields.io/badge/release-not%20published-757575?style=flat-square)](https://github.com/companionintelligence/CI-Spatial-Web-Meta/releases)
+[![platform](https://img.shields.io/badge/platform-Quest%203%20%C2%B7%20WebXR%20%C2%B7%20Desktop%20viewer-0a6358?style=flat-square)](https://github.com/companionintelligence/CI-Spatial-Web-Meta)
+[![License](https://img.shields.io/badge/license-Commercial%20Standard-8a5a00?style=flat-square)](LICENSE.md)
+[![Discord](https://img.shields.io/badge/chat-Discord-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.com/invite/yQp9hwpzAa)
+
+<p align="center"><a href="#quick-start">Get started</a> · <a href="README.md#architecture">Documentation</a> · <a href="https://docs.ci.computer/docs/reference/open-source-systems">Systems map</a></p>
+
+<p align="center">
+  <a href="#quick-start"><img src="https://img.shields.io/badge/Quick%20start-Quick%20start-0a6358?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Quick start" height="30"></a>
+</p>
 
 **Companion Intelligence** · Quest 3 local world/space mapper — combines **WebXR Scene Understanding** with a **local CV server** (Grounding DINO, SAM 2, Florence-2) to produce a glTF export (plus a Markdown scan report) with rich spatial metadata, re-localizable across sessions via a **persistent WebXR anchor**.
 
@@ -34,6 +43,38 @@ flowchart LR
 | Export | Left **Y** | `companion-scan-<ts>.glb` + `.md` in Downloads, server upload |
 | Edit | Desktop viewer | Pin label/confidence/position/caption edits, deletes; GLB/JSON/report re-export |
 | Resume | Reload / next session | Pins restored (localStorage) + persistent-anchor re-localization |
+
+
+## Features
+
+| Feature | What it provides |
+|---|---|
+| **WebXR room capture** | Use Quest 3 scene planes and anchors to place spatial pins. |
+| **Optional remote vision** | Send frames to a local CV server for labels and detections. |
+| **Portable export** | Export a GLB and Markdown scan report for desktop review. |
+
+## Screenshots
+
+<table>
+  <tr>
+    <td valign="top"><img src="docs/images/viewer-empty.png" alt="Desktop viewer before a scan is loaded" width="420"><p align="center">Desktop viewer before a scan is loaded</p></td>
+    <td valign="top"><img src="docs/images/desktop-overlay.png" alt="Desktop viewer overlay" width="420"><p align="center">Desktop viewer overlay</p></td>
+  </tr>
+</table>
+
+
+## How it fits together
+
+The headset owns tracking and pin placement; a separately hosted CV server handles optional vision, and export produces assets the desktop viewer can inspect.
+
+```mermaid
+flowchart LR
+  Headset[Quest WebXR planes and anchors] --> Pins[Spatial pins]
+  Camera[Optional camera frames] --> CV[Local CV server]
+  CV --> Pins
+  Pins --> Export[GLB and Markdown export]
+  Export --> Viewer[Desktop viewer and editor]
+```
 
 ## Architecture
 
