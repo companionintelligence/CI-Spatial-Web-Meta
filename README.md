@@ -4,7 +4,7 @@
 
 [![release](https://img.shields.io/badge/release-not%20published-757575?style=flat-square)](https://github.com/companionintelligence/CI-Spatial-Web-Meta/releases)
 [![platform](https://img.shields.io/badge/platform-Quest%203%20%C2%B7%20WebXR%20%C2%B7%20Desktop%20viewer-0a6358?style=flat-square)](https://github.com/companionintelligence/CI-Spatial-Web-Meta)
-[![License](https://img.shields.io/badge/license-Commercial%20Standard-8a5a00?style=flat-square)](LICENSE.md)
+[![License](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-0a6358?style=flat-square)](LICENSE)
 [![Discord](https://img.shields.io/badge/chat-Discord-5865F2?style=flat-square&logo=discord&logoColor=white)](https://discord.com/invite/yQp9hwpzAa)
 
 <p align="center"><a href="#quick-start">Get started</a> · <a href="README.md#architecture">Documentation</a> · <a href="https://docs.ci.computer/docs/reference/open-source-systems">Systems map</a></p>
@@ -355,3 +355,9 @@ flowchart LR
 
 When the CV service is on another machine, set `CV_SERVER_URL` to a reachable host and use the HTTPS frontend route needed for camera access. The CV server's own README documents weight installation and model-specific requirements.
 
+
+## License
+
+Companion Scan Quest is free for noncommercial use under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0). The full text is in [LICENSE](LICENSE). For common questions, see the [License FAQ](docs/License-FAQ.md) or email support@companionintelligence.com.
+
+Required Notice: Copyright LifeScope INC, DBA Companion Intelligence (https://ci.computer)
