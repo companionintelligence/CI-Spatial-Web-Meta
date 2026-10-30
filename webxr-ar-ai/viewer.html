@@ -67,7 +67,7 @@
       #editor { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--bg); }
       #editor.hidden { display: none; }
       #editor .row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
-      #editor .row span { width: 70px; color: var(--text-2); font-size: 12px; }
+      #editor .row > span, #editor .row > label { width: 70px; color: var(--text-2); font-size: 12px; }
       #editor input {
         flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 6px;
         padding: 4px 6px; font: 12.5px system-ui, sans-serif; background: var(--bg);
@@ -108,7 +108,7 @@
         <small>Companion Intelligence · Viewer &amp; Editor</small>
       </div>
       <label>Open GLB<input id="file-input" type="file" accept=".glb,.gltf,model/gltf-binary" /></label>
-      <select id="sample-select"><option value="">Sample home…</option></select>
+      <select id="sample-select" aria-label="Sample home"><option value="">Sample home…</option></select>
       <button id="report-btn" style="display:none">Report</button>
       <button id="json-btn" style="display:none">Export JSON</button>
       <button id="glb-btn" style="display:none">Export GLB</button>
@@ -136,14 +136,14 @@
       <ul id="pin-list"></ul>
       <h2 id="editor-title" style="display:none">Edit pin</h2>
       <div id="editor" class="hidden">
-        <div class="row"><span>Label</span><input id="pin-label" /></div>
-        <div class="row"><span>Confidence</span><input id="pin-confidence" type="number" min="0" max="1" step="0.01" /></div>
-        <div class="row"><span>Position</span>
-          <input id="pin-x" type="number" step="0.05" />
-          <input id="pin-y" type="number" step="0.05" />
-          <input id="pin-z" type="number" step="0.05" />
+        <div class="row"><label for="pin-label">Label</label><input id="pin-label" /></div>
+        <div class="row"><label for="pin-confidence">Confidence</label><input id="pin-confidence" type="number" min="0" max="1" step="0.01" /></div>
+        <div class="row" role="group" aria-labelledby="pin-position-label"><span id="pin-position-label">Position</span>
+          <input id="pin-x" type="number" step="0.05" aria-label="Position X" />
+          <input id="pin-y" type="number" step="0.05" aria-label="Position Y" />
+          <input id="pin-z" type="number" step="0.05" aria-label="Position Z" />
         </div>
-        <div class="row"><span>Caption</span><input id="pin-caption" /></div>
+        <div class="row"><label for="pin-caption">Caption</label><input id="pin-caption" /></div>
         <div class="actions">
           <button id="pin-apply">Apply</button>
           <button id="pin-delete">Delete</button>

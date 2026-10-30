@@ -158,6 +158,40 @@ test.describe('Scan viewer page', () => {
     expect(scan.floorplan.bounds.max.x).toBe(9.5);
   });
 
+  test('form controls are named: sample picker, pin editor, and nothing else unlabeled', async ({ page }) => {
+    // axe reported label x6 and select-name x1 (both critical): the editor rows
+    // put a bare <span> beside each input, and the sample picker's only text was
+    // its first <option>. A screen reader announced them as "edit text" / "pop
+    // up button" with no name.
+    await expect(page.locator('#sample-select')).toHaveAccessibleName('Sample home');
+
+    await page.selectOption('#sample-select', 'studio');
+    await page.evaluate(() => {
+      const pin = window.__companionViewer.getScan().pins.find(p => p.source === 'CvServer');
+      window.__companionViewer.selectPin(pin.id);
+    });
+    await expect(page.locator('#editor')).toBeVisible();
+
+    const names = {
+      '#pin-label': 'Label',
+      '#pin-confidence': 'Confidence',
+      '#pin-x': 'Position X',
+      '#pin-y': 'Position Y',
+      '#pin-z': 'Position Z',
+      '#pin-caption': 'Caption',
+    };
+    for (const [selector, name] of Object.entries(names)) {
+      await expect(page.locator(selector)).toHaveAccessibleName(name);
+    }
+
+    // Sweep, so the next control added without a label fails here too.
+    for (const role of ['textbox', 'spinbutton', 'combobox', 'checkbox']) {
+      for (const control of await page.getByRole(role).all()) {
+        await expect(control).toHaveAccessibleName(/\S/);
+      }
+    }
+  });
+
   test('deletes a pin and filters by source', async ({ page }) => {
     await page.selectOption('#sample-select', 'studio');
     await page.evaluate(() => {
