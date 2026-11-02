@@ -28,9 +28,10 @@ Both are produced by a single button press on the controller.
 ## 2. Start the app on your PC
 
 ```bash
-git clone https://github.com/companionintelligence/CI-WebXR-Scan-Meta.git
-cd CI-WebXR-Scan-Meta/webxr-ar-ai
-npm install
+git clone https://github.com/companionintelligence/CI-Spatial-Web-Meta.git
+cd CI-Spatial-Web-Meta/webxr-ar-ai
+export NODE_AUTH_TOKEN="$(gh auth token)"   # the org's packages come from GitHub Packages; needs read:packages
+npm ci
 npm run dev
 # → https://0.0.0.0:8081
 ```

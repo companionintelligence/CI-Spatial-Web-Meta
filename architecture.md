@@ -11,12 +11,23 @@ WebXR anchor.
 flowchart LR
     subgraph Quest3["Meta Quest 3 — Quest Browser"]
         APP["Immersive AR app<br/>(webxr-ar-ai, IWSDK + three.js)"]
-        STORE[("localStorage<br/>pins + anchor UUID")]
+        STORE[("localStorage<br/>pins + anchor UUID + camera FOV")]
+        GEO[("IndexedDB<br/>room geometry snapshots")]
         DL[("Headset Downloads<br/>.glb + .md")]
     end
-    subgraph PC["PC on the same LAN"]
-        VITE["Vite dev server<br/>HTTPS :8081, /v1 proxy"]
+    subgraph PC["PC on the same LAN (development)"]
+        VITE["Vite dev server<br/>HTTPS :8081, /v1 and /api proxy"]
+        WRKDEV["App Worker (dev)<br/>:8787 · /api/*"]
         VIEWER["Desktop Viewer & Editor<br/>/viewer.html"]
+    end
+    subgraph CF["Cloudflare (production, meta.ci.computer)"]
+        WORKER["App Worker<br/>static assets + /api/*"]
+    end
+    subgraph PORTAL["CI Portal (hub.ci.computer)"]
+        IDP["OIDC authorize · token · userinfo<br/>app listing (ci-memory)"]
+    end
+    subgraph MEM["Companion Memory (one per user)"]
+        MS["/api/health · /api/llm/models<br/>https only"]
     end
     subgraph GPU["GPU machine (optional)"]
         CV["CV server — FastAPI :8000<br/>Florence-2 · GroundingDINO · SAM 2"]
@@ -26,9 +37,15 @@ flowchart LR
     APP -- "HTTPS (page + assets)" --> VITE
     APP -- "/v1/detect · florence · segment · models" --> VITE
     VITE -- "proxy /v1/*" --> CV
+    VITE -- "proxy /api/*" --> WRKDEV
     APP -- "POST /v1/gltf" --> VITE
+    APP -- "HTTPS /api/* (production)" --> WORKER
+    APP -- "sign-in redirect (PKCE)" --> IDP
+    WORKER -- "code exchange · userinfo · app listing" --> IDP
+    WORKER -- "health · models (ID token)" --> MS
     CV --- GLTFS
     APP --- STORE
+    APP --- GEO
     APP -- "Left Y export" --> DL
     VIEWER -- "GET /v1/gltf (list + fetch)" --> VITE
 ```
@@ -48,7 +65,9 @@ flowchart TD
         PIN["SpatialPin / SpatialPinManager"]
         ROOT["ScanAnchorRoot<br/>persistent XRAnchor"]
         STG["ScanStorage<br/>localStorage persistence"]
+        GST["GeometryStore<br/>IndexedDB persistence"]
     end
+    CAL["cameraCalibration<br/>HFOV: ?hfov → saved → default"]
     subgraph rendering
         LBL["SpatialLabel3DRenderer"]
         VF["CameraViewfinder"]
@@ -72,9 +91,21 @@ flowchart TD
         VPARSE["scanParser"]
     end
     FIX["fixtures/homes.js<br/>24 test homes"]
+    subgraph net["net (sign-in, servers, first run)"]
+        SC["ServerConnection<br/>CV URL · memory URL · token"]
+        PS["PortalSession<br/>sign-in (PKCE) · session"]
+        FTUE["ftueModel<br/>first-run status (pure)"]
+    end
+    subgraph worker["Worker (src/worker, Cloudflare)"]
+        WRK["/api/health · oauth/token · session · discover"]
+    end
 
-    MAIN --> PA & PB & LBL & VF & FR & HUD & OVR & MENU & SNAP & SYNC & STG
-    PB --> SR
+    MAIN --> PA & PB & LBL & VF & FR & HUD & OVR & MENU & SNAP & SYNC & STG & GST
+    MAIN --> PS
+    PB --> SR & CAL
+    OVR --> CAL & SC & PS & FTUE
+    PS -. "HTTP /api/*" .-> WRK
+    SNAP --> GST
     PA & PB --> PIN
     PIN --> LBL & HUD & OVR & STG
     SNAP & LBL --> ROOT
@@ -82,6 +113,7 @@ flowchart TD
     DLM --> EXP & RPT
     SYNC --> EXP
     VMAIN --> VMETA & VPARSE & RPT & FIX
+    VMAIN --> SC & PS
 ```
 
 ## Capture sequence
@@ -141,11 +173,62 @@ sequenceDiagram
 | 1 | Open `https://<pc>:8081` on the Quest | Desktop overlay | XR/CV status, controller legend |
 | 2 | Enter AR, grant camera | Quest browser | Passthrough + viewfinder + wrist HUD |
 | 3 | (first run) Space Setup prompt | Native OS flow | Scene model (planes + meshes) |
-| 4 | **Right A** — capture | In-headset | Scene pins (blue) + CV detections (green) placed on real surfaces |
+| 4 | **Right A** — capture | In-headset | Scene pins (blue) + CV detections (green) placed on real surfaces; with no CV server, scene pins only, reported as a warning |
 | 5 | **Right B / Left X / Trigger** | In-headset | Cycle model (from server registry) / preview distance / display mode |
 | 6 | **Left Y** — export | In-headset | `.glb` + `.md` to Downloads, upload to CV server |
 | 7 | Inspect / edit | `/viewer.html` | Load from server store or file; edit pins; re-export GLB/JSON/report |
-| 8 | Reload / next session | Automatic | Pins restored from localStorage; persistent anchor re-localizes |
+| 8 | Reload / next session | Automatic | Pins restored from localStorage and room geometry from IndexedDB, so export still has the room; persistent anchor re-localizes |
+
+## Sign-in and memory discovery
+
+Sign-in and discovery are optional, and they run in the overlay's **Set up** section.
+Scanning does not depend on them. The app's Worker makes the calls the browser cannot,
+because the Portal does not accept browser calls from this origin. The app's client
+(`ci-meta`) has no secret, so the code exchange and every token call run in the Worker.
+
+```mermaid
+sequenceDiagram
+    actor U as User
+    participant OVR as DesktopOverlay (Set up)
+    participant PS as PortalSession
+    participant W as Worker (/api)
+    participant P as CI Portal
+    participant M as Memory server
+
+    U->>OVR: Sign in with Companion Intelligence
+    OVR->>PS: beginSignIn()
+    PS->>W: GET /api/health
+    W-->>PS: Portal URL and client id
+    PS->>PS: PKCE verifier and state kept in sessionStorage
+    PS-->>U: redirect to the Portal authorize endpoint (S256)
+    U->>P: signs in
+    P-->>U: back to the site with code and state
+    Note over PS: main.js calls finishSignIn(), which checks the state
+    PS->>W: POST /api/oauth/token (code, verifier)
+    W->>P: token exchange (public client)
+    P-->>W: access and ID tokens (refresh token stays here)
+    W-->>PS: access and ID tokens, with expiry
+    OVR->>W: GET /api/session
+    W->>P: userinfo
+    OVR->>W: POST /api/discover
+    W->>P: GET /api/users/me/apps?slug=ci-memory
+    loop each https memory server, at most three
+        W->>M: GET /api/health (5 s timeout)
+        W->>M: GET /api/llm/models (ID token)
+    end
+    W-->>OVR: servers, health, language models
+    U->>OVR: Use the server it found
+    OVR->>OVR: memory URL saved in this browser
+```
+
+| Rule | Where it is enforced |
+|---|---|
+| The redirect is this site's root, or a loopback root in development | `isAllowedRedirect` (Worker) |
+| Memory servers are `https` (or loopback `http`), with no credentials, query or fragment | `memoryBase` (Worker) |
+| At most three servers, and each health check times out after five seconds | Worker constants |
+| Refresh tokens never leave the Worker | `tokenExchange` (Worker) |
+| Signing out clears the session and the chosen memory server | overlay sign-out handler |
+| A CV-server token is sent only to the server it was issued for | `ServerConnection` |
 
 ## Scan schema (`extras.companion_scan`, v1.1)
 
@@ -208,8 +291,8 @@ branch in `/v1/detect`. Clients need no changes.
 
 | Layer | Harness | What it proves |
 |---|---|---|
-| Unit (242+) | Vitest, Node | fixtures, pipelines, storage, exporters, editor ops, report |
-| E2E (78) | Playwright + IWER (+ @iwer/sem) + mock CV server | real app against an emulated Quest 3 runtime |
+| Unit (427) | Vitest, Node | fixtures, pipelines, storage, exporters, editor ops, report, Worker routes, sign-in (PKCE), first-run model |
+| E2E (99) | Playwright + IWER (+ @iwer/sem) + mock CV server; the first-run flow runs against mocked `/api` routes and Portal | real app against an emulated Quest 3 runtime; `PW_CHANNEL=chrome` where Playwright's Chromium cannot create a WebGL context |
 | **24 test homes** | `fixtures/homes.js` → SEM environments | full WebXR plane/mesh-detection path: every home's plane/mesh counts and semantic labels |
 | Placement ground truth | `test-assets/cv/*.png/.json` | pinhole + raycast placement vs. rendered ground truth (occlusion-aware) |
 | Real-model eval | `cv-server/eval_images.py` | recall/IoU of the actual models on the synthetic frames (GPU box) |
