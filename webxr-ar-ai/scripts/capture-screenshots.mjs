@@ -4,7 +4,11 @@
  * (with IWER emulating a Quest 3 WebXR runtime).
  *
  * Usage:  node scripts/capture-screenshots.mjs
- * Requires: npx playwright install chromium (and the dev deps installed).
+ *         CAPTURE_BASE=https://meta.ci.computer node scripts/capture-screenshots.mjs
+ *           (the overlay, phone and XR shots from a deployed build; the viewer shots stay local)
+ * Requires: npx playwright install chromium (and the dev deps installed). PW_CHANNEL=chrome uses the
+ *           installed Google Chrome instead, where the bundled Chromium can't create a WebGL context.
+ * Writes:   desktop-overlay, mobile-overlay (390x844 at 2x), xr-session, viewer-empty and viewer-scan.
  */
 
 import { chromium } from '@playwright/test';
@@ -16,6 +20,10 @@ import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const OUT       = path.resolve(__dirname, '../../docs/images');
 const BASE      = 'http://127.0.0.1:4174';
+// The app shots (overlay, phone, XR) can run against a deployed build, for example
+// CAPTURE_BASE=https://meta.ci.computer, so the "Open on your Quest" address is the public one.
+// The viewer shots always use the local build, because they need the dev server's /node_modules.
+const APP_BASE  = process.env.CAPTURE_BASE || BASE;
 const IWER      = path.resolve(__dirname, '../node_modules/iwer/build/iwer.min.js');
 
 mkdirSync(OUT, { recursive: true });
@@ -82,6 +90,45 @@ const BUILD_ROOM_GLB = `
   }
 `;
 
+/** Install the emulated Quest 3 runtime before the app loads (as tests/e2e/helpers/iwer-setup.js does). */
+async function installQuest3(page) {
+  await page.addInitScript({ path: IWER });
+  await page.addInitScript(`
+    (() => {
+      const { XRDevice, metaQuest3 } = window.IWER ?? {};
+      if (!XRDevice) return;
+      const device = new XRDevice(metaQuest3);
+      device.stereoEnabled = false;
+      device.installRuntime();
+      window.__xrDevice = device;
+    })();
+  `);
+}
+
+/** Open the app with the sample scan's pins and status line filled in, as the desktop shot does. */
+async function openOverlay(page, url) {
+  await installQuest3(page);
+  await page.goto(url);
+  await page.waitForFunction(() => !!window.__companionScan);
+  await page.waitForSelector('#co-xr-status .co-badge.ok');
+  await page.waitForSelector('#co-cv-status .co-badge', { state: 'visible' });
+  await page.waitForTimeout(1500);
+  await page.evaluate((scan) => {
+    const { pinManager, appState, SpatialPin } = window.__companionScan;
+    for (const p of scan.pins) {
+      const pin = new SpatialPin();
+      pin.source = p.source;
+      pin.label = p.label;
+      pin.confidence = p.confidence ?? 0;
+      pin.trackId = p.id;
+      pin.hitType = p.hit_type;
+      pin.worldPosition = p.position_anchor_local;
+      pinManager.addOrUpdate(pin);
+    }
+    appState.setStatus('4 detections · 3 scene pins', 'ok');
+  }, SAMPLE_SCAN);
+}
+
 function startServer() {
   const proc = spawn('npx', ['vite', '--config', 'vite.test.config.js'], {
     cwd: path.resolve(__dirname, '..'),
@@ -106,8 +153,11 @@ async function waitForServer(timeoutMs = 30_000) {
 const server = startServer();
 try {
   await waitForServer();
-  const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  // PW_CHANNEL=chrome uses the installed Google Chrome, for machines where the
+  // bundled Chromium cannot create a WebGL context (same as playwright.config.js).
+  const browser = await chromium.launch({ channel: process.env.PW_CHANNEL || undefined });
+  // Tall enough that the whole status panel is in view, not only its first screen.
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1040 } });
 
   // ── 1. Desktop overlay on the app page (IWER → XR supported) ────────────
   await page.addInitScript({ path: IWER });
@@ -121,7 +171,7 @@ try {
       window.__xrDevice = device;
     })();
   `);
-  await page.goto(BASE);
+  await page.goto(APP_BASE);
   await page.waitForFunction(() => !!window.__companionScan);
   await page.waitForSelector('#co-xr-status .co-badge.ok');
   // Give the health check a moment to settle on Offline
@@ -145,6 +195,27 @@ try {
   }, SAMPLE_SCAN);
   await page.locator('#co-overlay').screenshot({ path: `${OUT}/desktop-overlay.png` });
   console.log('✓ desktop-overlay.png');
+
+  // ── 1b. The same overlay at phone width (390×844 at 2×) ──────────────────
+  const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 });
+  await openOverlay(phone, APP_BASE);
+  await phone.locator('#co-overlay').screenshot({ path: `${OUT}/mobile-overlay.png` });
+  console.log('✓ mobile-overlay.png');
+
+  // ── 1c. The emulated Quest 3 in an immersive-ar session, with the wrist HUD ─
+  const xr = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+  await installQuest3(xr);
+  await xr.goto(APP_BASE);
+  await xr.waitForFunction(() => !!window.__xrDevice?.sessionOffered, { timeout: 15_000 });
+  await xr.evaluate(() => {
+    window.__xrDevice.grantOfferedSession();
+    const { left, right } = window.__xrDevice.controllers;
+    if (left) left.connected = true;
+    if (right) right.connected = true;
+  });
+  await xr.waitForTimeout(2000);
+  await xr.screenshot({ path: `${OUT}/xr-session.png` });
+  console.log('✓ xr-session.png');
 
   // ── 2. Viewer: empty state ───────────────────────────────────────────────
   const viewer = await browser.newPage({ viewport: { width: 1440, height: 900 } });
