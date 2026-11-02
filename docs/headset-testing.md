@@ -18,11 +18,14 @@ optional for most checks.
 # 1. (Optional) CV server — GPU machine, weights in cv-server/weights/
 cd cv-server && docker compose up --build
 
-# 2. Frontend
+# 2. Frontend (npm ci needs NODE_AUTH_TOKEN for the org's GitHub Packages; see "Theme" in the README)
 cd webxr-ar-ai
-npm install
+npm ci
 npm run dev                                      # CV server on localhost
 CV_SERVER_URL=http://192.168.1.50:8000 npm run dev   # CV server elsewhere
+
+# 3. (Optional, for sign-in and memory discovery) the app's Worker, in a second terminal
+npm run dev:worker                               # serves /api on port 8787
 ```
 
 Find your PC's LAN IP (`ip addr` / `ipconfig`), then in the **Meta Quest
@@ -33,12 +36,12 @@ warning (Advanced → Proceed).
 
 | # | Step | Expect |
 |---|------|--------|
-| 1 | Load the page | Desktop overlay panel appears: *WebXR: immersive-ar supported*; *CV server: Offline* is fine without Docker |
+| 1 | Load the page | Desktop overlay panel appears, with the **Set up** section at the top. On the headset, *WebXR: immersive-ar supported*; *CV server: Offline* is fine without Docker. Sign-in is optional: scanning does not need it |
 | 2 | Click **Enter AR** (browser session offer) | Passthrough view; overlay disappears |
 | 3 | Grant **camera permission** when prompted | Viewfinder plane (small video rectangle) appears ~40 cm ahead after a moment |
 | 4 | Look at left wrist | HUD: Model / Display / Preview / Pins rows + status line |
 | 5 | No Space Setup yet? | After ~2 s the native room-capture flow launches; complete it and re-enter the session |
-| 6 | Press **Right A** (capture) | HUD shows BUSY…, then a status line. Without a CV server: red CV error, but blue **scene pins** (walls/floor/furniture) still appear with labels |
+| 6 | Press **Right A** (capture) | HUD shows BUSY…, then a status line. Without a CV server: amber *CV server unreachable · N scene pins*, and blue **scene pins** (walls/floor/furniture) still appear with labels |
 | 7 | Press **Left Y** (export) | `companion-scan-*.glb` lands in the headset **Downloads** folder; HUD: yellow *Saved … upload failed* without a server, green *Exported …* with one |
 | 8 | Exit AR (system button) | Desktop overlay reappears with live pin counts; camera indicator LED turns off |
 
@@ -64,11 +67,15 @@ warning (Advanced → Proceed).
 If CV pins land consistently left/right/short of where objects are:
 
 1. Aim at a small, distinct object 1.5–2 m away, capture, note the offset.
-2. Reload with `https://<PC-IP>:8081/?hfov=<degrees>` — default is 80.
+2. On the PC overlay, set **Camera FOV** and press **Save**. The value is
+   kept in the headset browser's localStorage and applies to the next capture
+   (no reload needed). Default is 80. For a one-off test, reload with
+   `https://<PC-IP>:8081/?hfov=<degrees>`; that overrides the saved value.
    - Pins squeezed toward the view centre → **increase** hfov
    - Pins pushed outward from the centre → **decrease** hfov
 3. Repeat in 2–3° steps; typical good values are 70–90.
-4. Record the winning value — it is stable per device model.
+4. Record the winning value — it is stable per device model. Save it on each
+   headset you use, because each camera differs.
 
 ## Cross-session anchor test
 
@@ -95,6 +102,9 @@ If CV pins land consistently left/right/short of where objects are:
 | HUD/controller discs missing | Controllers asleep at session start — press any button; attachment retries every frame |
 | Export does nothing | Check the headset Downloads folder (the browser may hide the download toast); HUD status line reports the result |
 | Stutter on capture | Expected ≤ 1 frame; if worse, lower the JPEG size in `PipelineB.initCameraEntity` (e.g. 960×540) |
+| *Sign-in: "not available right now"* | The app's Worker is not answering `/api/health`: the deployed Worker, or `npm run dev:worker` in development |
+| Signed in, but *Memory discovery is not available yet* | The CI Portal has not registered the `ci-meta` client yet, or it refused the listing. See [integration/ci-platform.md](integration/ci-platform.md) |
+| Signed in, but *No memory server on this account* | Companion Memory is not installed on the account, or the Portal does not list it yet |
 
 ## What to report
 

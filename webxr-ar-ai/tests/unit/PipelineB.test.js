@@ -289,13 +289,60 @@ describe('PipelineB — model presets', () => {
     const cv = { detect: vi.fn().mockRejectedValue(new Error('CV server down')) };
     const { pb, mgr } = makePipeline(cv);
 
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = await pb.capture('cap-fail', []);
 
     expect(result.pins).toHaveLength(0);
     expect(result.rays).toHaveLength(0);
-    expect(result.error).toBe('CV server down');
+    expect(result.error).toBe('CV server error');
     expect(mgr.pins).toHaveLength(0);
-    expect(errorSpy).toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalled();
+  });
+});
+
+describe('PipelineB — CV failures are partial results', () => {
+  it('names an unreachable CV server instead of the raw error', async () => {
+    setPreset('GDino');
+    const cv = { detect: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) };
+    const { pb, mgr } = makePipeline(cv);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await pb.capture('cap-down', []);
+
+    expect(result.error).toBe('CV server unreachable');
+    expect(result.pins).toHaveLength(0);
+    expect(mgr.pins).toHaveLength(0);
+  });
+
+  it('names a timed-out CV request', async () => {
+    setPreset('GDino');
+    const timeout = Object.assign(new Error('The operation was aborted'), { name: 'AbortError' });
+    const cv = { detect: vi.fn().mockRejectedValue(timeout) };
+    const { pb } = makePipeline(cv);
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const result = await pb.capture('cap-slow', []);
+
+    expect(result.error).toBe('CV server timed out');
+  });
+});
+
+describe('PipelineB — camera FOV calibration', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('re-reads the FOV saved on this device at every capture', () => {
+    const { pb } = makePipeline({});
+    expect(pb.hfov).toBeCloseTo((80 * Math.PI) / 180, 5);
+
+    vi.stubGlobal('localStorage', { getItem: (k) => (k === 'companionScan.cameraHfovDeg' ? '70' : null) });
+    pb.snapshotPose();
+    expect(pb.hfov).toBeCloseTo((70 * Math.PI) / 180, 5);
+  });
+
+  it('prefers ?hfov= over the FOV saved on this device', () => {
+    vi.stubGlobal('localStorage', { getItem: () => '70' });
+    vi.stubGlobal('location', { search: '?hfov=75' });
+    const { pb } = makePipeline({});
+    expect(pb.hfov).toBeCloseTo((75 * Math.PI) / 180, 5);
   });
 });

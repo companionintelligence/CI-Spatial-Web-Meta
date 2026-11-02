@@ -28,6 +28,7 @@ import { SpatialPin }                from './spatial/SpatialPin.js';
 import { SpatialPinManager }         from './spatial/SpatialPinManager.js';
 import { ScanAnchorRoot }            from './spatial/ScanAnchorRoot.js';
 import { ScanStorage }               from './spatial/ScanStorage.js';
+import { GeometryStore }             from './spatial/GeometryStore.js';
 import { CvServerClient }            from './cv/CvServerClient.js';
 import { PipelineB }                 from './pipeline/PipelineB.js';
 import { runPipelineA }              from './pipeline/PipelineA.js';
@@ -42,6 +43,10 @@ import { DesktopOverlay }            from './ui/DesktopOverlay.js';
 import { SceneGeometrySnapshot }     from './export/SceneGeometrySnapshot.js';
 import { GltfSyncClient }            from './export/GltfSyncClient.js';
 import { downloadGlb }               from './export/GltfDownload.js';
+import { initColorScheme }           from './ui/theme.js';
+import { finishSignIn }              from './net/PortalSession.js';
+import '@companionintelligence/tokens/tokens.css';
+import '@companionintelligence/fonts/manrope.css';
 
 // Target refresh rate for the immersive session (Hz).
 const TARGET_FRAME_RATE = 90;
@@ -53,11 +58,16 @@ const ROOM_CAPTURE_GRACE_MS = 2000;
 
 // Pick up `?server=`/`?token=` (quick-connect without typing on the Quest
 // keyboard) and finish an OAuth redirect, before anything talks to a server.
-connection.applyUrlParams();
+// The canon colour set follows the device (light or dark) for the 2D overlay.
+initColorScheme();
+
+const linkSettings = connection.applyUrlParams();
+let signInError = null;
 try {
-  await connection.completeOAuthLogin();
+  await finishSignIn();
 } catch (err) {
-  console.error('[CompanionScan] OAuth sign-in failed:', err);
+  signInError = err;
+  console.error('[CompanionScan] Sign-in failed:', err);
 }
 
 const container = /** @type {HTMLDivElement} */ (document.getElementById('scene-container'));
@@ -91,6 +101,7 @@ const cvClient    = new CvServerClient({
 });
 const scanRoot    = new ScanAnchorRoot(world);
 const scanStorage = new ScanStorage();
+const geometryStore = new GeometryStore();
 
 // Filled in by CompanionScanSystem.init (the system owns the snapshot store).
 const scanHooks = { clearGeometry: null };
@@ -99,6 +110,7 @@ function clearScan() {
   pinManager.clearAll();
   scanHooks.clearGeometry?.();
   scanStorage.clear();
+  geometryStore.clear();
   appState.setStatus('Scan cleared', 'info');
 }
 
@@ -111,6 +123,10 @@ const desktopOverlay = new DesktopOverlay({
   onClear:    clearScan,
 });
 desktopOverlay.init(world);
+if (linkSettings.serverSet) {
+  appState.setStatus(`Server set from link: ${linkSettings.serverSet}`, 'info');
+}
+if (signInError) appState.setStatus(signInError.message, 'error');
 
 // Adopt the CV server's model registry when reachable (silent fallback to
 // the static Florence/GDino/SAM2 cycle otherwise).
@@ -119,7 +135,11 @@ cvClient.models()
   .catch(() => {});
 
 // Debug / test hook (used by Playwright and chrome://inspect on-device)
-window.__companionScan = { pinManager, appState, scanRoot, scanStorage, clearScan, SpatialPin };
+window.__companionScan = {
+  pinManager, appState, scanRoot, scanStorage, clearScan, SpatialPin,
+  geometryStore,
+  flushGeometry: () => geometryStore.flush(),
+};
 
 // ── CompanionScanSystem ────────────────────────────────────────────────────
 //
@@ -149,6 +169,7 @@ class CompanionScanSystem extends createSystem({
     this._geomSnapshot  = new SceneGeometrySnapshot(scanRoot);
     this._gltfSync      = new GltfSyncClient(cvClient);
     scanHooks.clearGeometry = () => this._geomSnapshot.clear();
+    window.__companionScan.geometry = this._geomSnapshot;
 
     this._viewfinder.init(this._cameraEntity);
 
@@ -156,6 +177,13 @@ class CompanionScanSystem extends createSystem({
     // restored pins get their 3D labels rebuilt).
     const restored = scanStorage.restore(pinManager);
     if (restored) appState.setStatus(`Restored ${restored} pins`, 'info');
+
+    // Restore the room geometry saved by the previous page, so an export made
+    // after a reload still contains the room. The next capture replaces it.
+    geometryStore.load().then(records => {
+      const count = this._geomSnapshot.restore(records);
+      if (count) console.log(`[CompanionScan] Restored ${count} room geometry snapshots`);
+    });
 
     // Keep label renderer in sync with display mode
     this._labelRenderer.setDisplayMode(appState.displayMode);
@@ -185,7 +213,7 @@ class CompanionScanSystem extends createSystem({
       this._viewfinder.unbind();
       this._hudReady  = false;
       this._menuReady = false;
-      scanStorage.save(pinManager, scanRoot);
+      this._persistScan();
     });
 
     // ── WebGL context loss ────────────────────────────────────────────────
@@ -260,6 +288,12 @@ class CompanionScanSystem extends createSystem({
 
   // ── Capture ───────────────────────────────────────────────────────────────
 
+  /** Save the pins and the room geometry, so a reload keeps the whole scan. */
+  _persistScan() {
+    scanStorage.save(pinManager, scanRoot);
+    geometryStore.save(this._geomSnapshot.serialize());
+  }
+
   async _doCapture() {
     if (this._capturing || appState.isBusy) return;
     if (this.world.visibilityState.value !== VisibilityState.Visible) return;
@@ -293,12 +327,14 @@ class CompanionScanSystem extends createSystem({
         .filter(p => p.captureId === captureId);
       this._viewfinder.setOverlayData(overlayPins);
 
+      const scenePins = pinManager
+        .bySource('MetaScene')
+        .filter(p => p.captureId === captureId).length;
       if (error) {
-        appState.setStatus(error, 'error');
+        // Scene pins are placed without the CV server, so a CV failure is a
+        // partial result (warning), not a failed capture.
+        appState.setStatus(`${error} · ${scenePins} scene pins`, 'warn');
       } else {
-        const scenePins = pinManager
-          .bySource('MetaScene')
-          .filter(p => p.captureId === captureId).length;
         appState.setStatus(`${pins.length} detections · ${scenePins} scene pins`, 'ok');
       }
 
@@ -306,7 +342,7 @@ class CompanionScanSystem extends createSystem({
       console.error('[CompanionScan] Capture failed:', err);
       appState.setStatus(`Capture failed: ${err?.message ?? err}`, 'error');
     } finally {
-      scanStorage.save(pinManager, scanRoot);
+      this._persistScan();
       appState.setBusy(false);
       this._capturing = false;
     }

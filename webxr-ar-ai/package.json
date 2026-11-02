@@ -5,8 +5,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node scripts/sync-brand.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/sync-brand.mjs",
     "build": "vite build",
+    "brand:check": "node scripts/sync-brand.mjs --check",
+    "dev:worker": "wrangler dev --port 8787",
     "preview": "vite preview",
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
@@ -16,14 +20,19 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:all": "npm run test:unit && npm run test:e2e",
-    "deploy": "vite build && wrangler deploy",
-    "deploy:dry-run": "vite build && wrangler deploy --dry-run"
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:dry-run": "npm run build && wrangler deploy --dry-run",
+    "lint:canon": "ci-lint-canon ."
   },
   "dependencies": {
+    "@companionintelligence/fonts": "1.0.0",
+    "@companionintelligence/tokens": "1.6.0",
     "@iwsdk/core": "0.3.1",
     "three": "^0.183.2"
   },
   "devDependencies": {
+    "@companionintelligence/assets": "1.5.2",
+    "@companionintelligence/config": "1.6.0",
     "@iwer/sem": "^0.2.5",
     "@playwright/test": "^1.58.2",
     "@vitest/coverage-v8": "^4.1.0",

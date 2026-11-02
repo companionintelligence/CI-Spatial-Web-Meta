@@ -1,5 +1,5 @@
 /**
- * E2E tests — module-level via /harness.html
+ * E2E tests — module-level via /tests/harness/harness.html
  *
  * These tests load the lightweight harness page which exposes the pure-logic
  * modules (AppState, SpatialPin, SpatialPinManager, CvServerClient) on
@@ -9,7 +9,7 @@
  */
 import { test, expect } from '@playwright/test';
 
-const HARNESS = '/harness.html';
+const HARNESS = '/tests/harness/harness.html';
 
 async function waitForHarness(page) {
   await page.waitForFunction(() => window.__harnessReady === true, { timeout: 5000 });

@@ -21,11 +21,12 @@
 import * as THREE from 'three';
 import { DisplayMode } from '../app/AppState.js';
 import { PinSource } from '../spatial/SpatialPin.js';
+import { FONT_STACK, XR_SCHEME, canonColor, threeColor, withAlpha } from '../ui/theme.js';
 
-// Colour coding by source
+// Colour coding by source, from the canon's dark status set (labels sit on passthrough)
 const PIN_COLOR = {
-  [PinSource.CvServer]:  0x00ff50,   // green
-  [PinSource.MetaScene]: 0x5599ff,   // blue
+  [PinSource.CvServer]:  threeColor('success', XR_SCHEME),   // green
+  [PinSource.MetaScene]: threeColor('info', XR_SCHEME),      // blue
 };
 
 // Shared across all pins — never disposed per pin.
@@ -118,7 +119,7 @@ export class SpatialLabel3DRenderer {
   }
 
   _onCreate(pin) {
-    const group = _buildLabelGroup(pin, PIN_COLOR[pin.source] ?? 0xffffff);
+    const group = _buildLabelGroup(pin, PIN_COLOR[pin.source] ?? threeColor('foreground', XR_SCHEME));
     group.visible = this._visible;
     this._setTransform(group, pin);
     this._parent.add(group);
@@ -169,15 +170,15 @@ function _buildLabelGroup(pin, color) {
   canvas.width  = 320;
   canvas.height = 80;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = 'rgba(0,0,0,0.72)';
+  ctx.fillStyle = withAlpha(canonColor('background', XR_SCHEME), 0.78);
   ctx.beginPath();
   ctx.roundRect(0, 0, 320, 80, 10);
   ctx.fill();
   ctx.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
-  ctx.font      = 'bold 28px sans-serif';
+  ctx.font      = `700 28px ${FONT_STACK}`;
   ctx.fillText(text, 12, 40);
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.font      = '18px sans-serif';
+  ctx.fillStyle = canonColor('muted-foreground', XR_SCHEME);
+  ctx.font      = `500 18px ${FONT_STACK}`;
   ctx.fillText(subLabel, 12, 64);
 
   const tex = new THREE.CanvasTexture(canvas);

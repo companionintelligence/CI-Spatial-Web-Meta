@@ -7,6 +7,7 @@
  */
 
 import * as THREE from 'three';
+import { XR_SCHEME, threeColor } from '../ui/theme.js';
 
 const RAY_DURATION_MS = 1500;
 
@@ -33,7 +34,7 @@ export class FrustumRenderer {
     }
 
     const geo  = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(pts, 3));
-    const mat  = new THREE.LineBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.8 });
+    const mat  = new THREE.LineBasicMaterial({ color: threeColor('level-orange', XR_SCHEME), transparent: true, opacity: 0.8 });
     const line = new THREE.LineSegments(geo, mat);
     this.world.scene.add(line);
     this._batches.push({ line, born: Date.now() });

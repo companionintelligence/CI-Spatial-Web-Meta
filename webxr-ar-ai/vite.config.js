@@ -17,8 +17,9 @@ export default defineConfig({
     target: 'esnext',  // required for top-level await
     rollupOptions: {
       input: {
-        main:   resolve(__dirname, 'index.html'),
-        viewer: resolve(__dirname, 'viewer.html'),
+        main:     resolve(__dirname, 'index.html'),
+        viewer:   resolve(__dirname, 'viewer.html'),
+        notFound: resolve(__dirname, '404.html'),   // emitted as dist/404.html
       },
     },
   },
@@ -34,6 +35,12 @@ export default defineConfig({
       // another machine.
       '/v1': {
         target: process.env.CV_SERVER_URL ?? 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      // The sign-in and discovery routes in src/worker/. Run `npm run dev:worker`
+      // (after `npm run build`) to serve them locally.
+      '/api': {
+        target: process.env.WORKER_URL ?? 'http://127.0.0.1:8787',
         changeOrigin: true,
       },
     },

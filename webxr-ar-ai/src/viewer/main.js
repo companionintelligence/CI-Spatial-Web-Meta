@@ -25,16 +25,23 @@ import { buildScanReport } from '../export/ScanReport.js';
 import { saveBlob } from '../export/GltfDownload.js';
 import { TEST_HOMES, homeToScanFixture } from '../fixtures/homes.js';
 import * as connection from '../net/ServerConnection.js';
+import { beginSignIn, clearSession, finishSignIn, getSession } from '../net/PortalSession.js';
+import { FONT_STACK, canonColor, initColorScheme, threeColor, withAlpha } from '../ui/theme.js';
+import '@companionintelligence/tokens/tokens.css';
+import '@companionintelligence/fonts/manrope.css';
+
+// The canon colour set follows the device (light or dark) for the whole page.
+initColorScheme();
 
 // Pick up `?server=`/`?token=` and finish an OAuth redirect before the
 // server-scans panel makes its first request.
 connection.applyUrlParams();
-connection.completeOAuthLogin().catch(err =>
-  console.error('[Viewer] OAuth sign-in failed:', err));
+finishSignIn().catch(err =>
+  console.error('[Viewer] Sign-in failed:', err));
 
-// Light (ci.computer) palette for the 3D view
-const PIN_COLOR  = { CvServer: 0x0a7d43, MetaScene: 0x2b5fd9 };
-const KIND_COLOR = { plane: 0x2b5fd9, mesh: 0x666670 };
+// 3D colours are canon roles, resolved for the page's current scheme.
+const PIN_ROLE  = { CvServer: 'success', MetaScene: 'info' };
+const KIND_ROLE = { plane: 'info', mesh: 'muted-foreground' };
 
 // ── Three.js scene ─────────────────────────────────────────────────────────
 
@@ -44,8 +51,8 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 viewport.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xf1f1f1);
-scene.add(new THREE.GridHelper(10, 20, 0xbcbcbc, 0xdadada));
+scene.background = new THREE.Color(threeColor('background'));
+scene.add(new THREE.GridHelper(10, 20, threeColor('border'), threeColor('border')));
 scene.add(new THREE.AxesHelper(0.5));
 
 const camera = new THREE.PerspectiveCamera(60, 1, 0.01, 200);
@@ -114,7 +121,7 @@ async function loadGlb(buffer) {
       const kind = obj.userData?.companionScan?.kind
         ?? (obj.name.startsWith('plane') ? 'plane' : 'mesh');
       obj.material = new THREE.MeshBasicMaterial({
-        color: KIND_COLOR[kind] ?? 0x666670,
+        color: threeColor(KIND_ROLE[kind] ?? 'muted-foreground'),
         wireframe: true,
         transparent: true,
         opacity: 0.6,
@@ -151,7 +158,7 @@ function loadSampleHome(name) {
   for (const r of rooms) {
     const shell = new THREE.Mesh(
       new THREE.BoxGeometry(r.w, r.h, r.d),
-      new THREE.MeshBasicMaterial({ color: 0xaaaaaa, wireframe: true, transparent: true, opacity: 0.45 }),
+      new THREE.MeshBasicMaterial({ color: threeColor('muted-foreground'), wireframe: true, transparent: true, opacity: 0.45 }),
     );
     shell.position.set(r.x, r.h / 2, r.z);
     shell.name = 'plane-room-shell';
@@ -160,7 +167,7 @@ function loadSampleHome(name) {
   for (const b of boxes) {
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(b.w, b.h, b.d),
-      new THREE.MeshBasicMaterial({ color: KIND_COLOR.mesh, wireframe: true, transparent: true, opacity: 0.7 }),
+      new THREE.MeshBasicMaterial({ color: threeColor(KIND_ROLE.mesh), wireframe: true, transparent: true, opacity: 0.7 }),
     );
     mesh.position.set(b.x, b.y, b.z);
     mesh.rotation.y = b.yaw;
@@ -191,7 +198,7 @@ function _rebuildMarkers() {
       new THREE.Vector3(min.x, min.y, min.z),
       new THREE.Vector3(max.x, max.y, max.z),
     );
-    boundsHelper = new THREE.Box3Helper(box, 0xb07d10);
+    boundsHelper = new THREE.Box3Helper(box, threeColor('warning'));
     contentGroup.add(boundsHelper);
   }
 }
@@ -201,7 +208,7 @@ function _buildPinMarker(pin) {
   const p = pinDisplayPosition(pin);
   group.position.set(p.x, p.y, p.z);
 
-  const color = PIN_COLOR[pin.source] ?? 0x111111;
+  const color = threeColor(PIN_ROLE[pin.source] ?? 'foreground');
   const sphere = new THREE.Mesh(
     new THREE.SphereGeometry(0.03, 12, 8),
     new THREE.MeshBasicMaterial({ color }),
@@ -216,11 +223,11 @@ function _textSprite(text, color) {
   const canvas = document.createElement('canvas');
   canvas.width = 256; canvas.height = 64;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = 'rgba(255,255,255,0.92)';
-  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillStyle = withAlpha(canonColor('ci-surface-3'), 0.92);
+  ctx.strokeStyle = withAlpha(canonColor('foreground'), 0.25);
   ctx.beginPath(); ctx.roundRect(1, 1, 254, 62, 12); ctx.fill(); ctx.stroke();
   ctx.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
-  ctx.font = 'bold 30px sans-serif';
+  ctx.font = `700 30px ${FONT_STACK}`;
   ctx.textBaseline = 'middle';
   ctx.fillText(text, 14, 32);
 
@@ -418,7 +425,7 @@ async function loadFile(file) {
     console.error('[Viewer] Failed to load GLB:', err);
     document.getElementById('empty-note')?.remove();
     document.getElementById('scan-stats').innerHTML =
-      `<tr><td colspan="2" style="color: var(--error)">Failed to load: ${err?.message ?? err}</td></tr>`;
+      `<tr><td colspan="2" style="color: var(--destructive)">Failed to load:${err?.message ?? err}</td></tr>`;
   }
 }
 
@@ -447,7 +454,7 @@ const connOauthBtn  = document.getElementById('conn-oauth-connect');
 const connSignOutBtn = document.getElementById('conn-oauth-disconnect');
 
 function refreshConnStatus() {
-  const connected = connection.isConnected();
+  const connected = Boolean(getSession()) || connection.isConnected();
   connSignOutBtn.style.display = connected ? '' : 'none';
   const where = connection.getServerUrl() || 'same origin';
   connStatusEl.textContent = connected ? `${where} · signed in` : where;
@@ -460,17 +467,14 @@ document.getElementById('conn-save').addEventListener('click', () => {
   refreshServerScans();
 });
 
-if (connection.isOAuthConfigured()) {
-  connOauthBtn.addEventListener('click', () => {
-    connection.startOAuthLogin().catch(err => {
-      connStatusEl.textContent = `OAuth sign-in failed: ${err?.message ?? err}`;
-    });
+connOauthBtn.addEventListener('click', () => {
+  beginSignIn().catch(err => {
+    connStatusEl.textContent = `Sign-in did not start: ${err?.message ?? err}`;
   });
-} else {
-  connOauthBtn.remove();
-}
+});
 
 connSignOutBtn.addEventListener('click', () => {
+  clearSession();
   connection.disconnect();
   refreshConnStatus();
   refreshServerScans();
@@ -516,7 +520,7 @@ async function loadServerScan(name) {
   } catch (err) {
     console.error('[Viewer] Failed to load server scan:', err);
     document.getElementById('scan-stats').innerHTML =
-      `<tr><td colspan="2" style="color: var(--error)">Failed to load ${name}: ${err?.message ?? err}</td></tr>`;
+      `<tr><td colspan="2" style="color: var(--destructive)">Failed to load ${name}:${err?.message ?? err}</td></tr>`;
   }
 }
 

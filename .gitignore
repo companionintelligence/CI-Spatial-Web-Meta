@@ -155,3 +155,16 @@ webxr-ar-ai/dist/
 webxr-ar-ai/test-results/
 webxr-ar-ai/playwright-report/
 webxr-ar-ai/coverage/
+webxr-ar-ai/.wrangler/
+
+# Brand copies, generated from the pinned @companionintelligence/assets by
+# webxr-ar-ai/scripts/sync-brand.mjs (predev and prebuild rebuild them)
+webxr-ar-ai/public/brand/
+webxr-ar-ai/public/favicon.svg
+webxr-ar-ai/public/favicon-16.png
+webxr-ar-ai/public/favicon-32.png
+webxr-ar-ai/public/favicon-48.png
+webxr-ar-ai/public/favicon.ico
+webxr-ar-ai/public/apple-touch-icon.png
+webxr-ar-ai/public/icon-192.png
+webxr-ar-ai/public/icon-512.png
