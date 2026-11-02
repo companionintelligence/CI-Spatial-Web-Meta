@@ -14,18 +14,22 @@
 import * as THREE from 'three';
 import { appState } from '../app/AppState.js';
 import { PinSource } from '../spatial/SpatialPin.js';
+import { FONT_STACK, XR_SCHEME, canonColor, withAlpha } from './theme.js';
 
 const HUD_WIDTH  = 0.14;   // metres
 const HUD_HEIGHT = 0.10;   // metres
 const CANVAS_W   = 420;
 const CANVAS_H   = 300;
 
-const STATUS_COLOR = {
-  info:  '#cccccc',
-  ok:    '#2ecc71',
-  warn:  '#f1c40f',
-  error: '#ff5544',
-};
+/** Status line colour, from the canon's dark set (the HUD sits on passthrough). */
+function statusColor(level) {
+  switch (level) {
+    case 'ok':    return canonColor('success', XR_SCHEME);
+    case 'warn':  return canonColor('warning', XR_SCHEME);
+    case 'error': return canonColor('destructive', XR_SCHEME);
+    default:      return canonColor('muted-foreground', XR_SCHEME);
+  }
+}
 
 export class WristHUD {
   /**
@@ -99,14 +103,14 @@ export class WristHUD {
 
     ctx.clearRect(0, 0, W, H);
 
-    // Background
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+    // Background: the canon dark background, slightly translucent over passthrough
+    ctx.fillStyle = withAlpha(canonColor('background', XR_SCHEME), 0.82);
     ctx.beginPath();
     ctx.roundRect(0, 0, W, H, 16);
     ctx.fill();
 
     // Border
-    ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+    ctx.strokeStyle = withAlpha(canonColor('foreground', XR_SCHEME), 0.2);
     ctx.lineWidth   = 2;
     ctx.beginPath();
     ctx.roundRect(1, 1, W - 2, H - 2, 15);
@@ -120,25 +124,25 @@ export class WristHUD {
       { label: 'Pins:',    value: this._pinSummary() },
     ];
 
-    ctx.font      = 'bold 28px sans-serif';
+    ctx.font      = `700 28px ${FONT_STACK}`;
     const lineH   = 52;
     const startY  = 44;
     rows.forEach(({ label, value }, i) => {
       const y = startY + i * lineH;
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
+      ctx.fillStyle = canonColor('muted-foreground', XR_SCHEME);
       ctx.fillText(label, 16, y);
-      ctx.fillStyle = '#ffffff';
+      ctx.fillStyle = canonColor('foreground', XR_SCHEME);
       ctx.fillText(value, 160, y);
     });
 
     // Bottom line: BUSY indicator wins over the status message
     if (appState.isBusy) {
-      ctx.fillStyle = '#ff8800';
-      ctx.font      = 'bold 30px sans-serif';
+      ctx.fillStyle = canonColor('warning', XR_SCHEME);
+      ctx.font      = `700 30px ${FONT_STACK}`;
       ctx.fillText('BUSY…', 16, H - 20);
     } else if (appState.status.text) {
-      ctx.fillStyle = STATUS_COLOR[appState.status.level] ?? STATUS_COLOR.info;
-      ctx.font      = 'bold 24px sans-serif';
+      ctx.fillStyle = statusColor(appState.status.level);
+      ctx.font      = `700 24px ${FONT_STACK}`;
       ctx.fillText(_truncate(appState.status.text, 30), 16, H - 20);
     }
 

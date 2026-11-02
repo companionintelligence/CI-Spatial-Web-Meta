@@ -13,17 +13,22 @@
  */
 
 import * as THREE from 'three';
+import { FONT_STACK, XR_SCHEME, canonColor, threeColor, withAlpha } from './theme.js';
 
+/**
+ * Each button's disc is a step on the canon level scale (red → orange → gold →
+ * green → blue), so the legend uses named canon hues rather than literals.
+ */
 const INDICATORS = {
   right: [
-    { label: 'Capture',      color: 0xff2222, offset: [  0.01,  0.01, -0.04 ] },   // A
-    { label: 'Cycle Model',  color: 0x2255ff, offset: [ -0.01,  0.01, -0.04 ] },   // B
-    { label: 'Display Mode', color: 0xff8800, offset: [  0,    -0.01, -0.04 ] },   // Trigger
+    { label: 'Capture',      role: 'level-red',    offset: [  0.01,  0.01, -0.04 ] },   // A
+    { label: 'Cycle Model',  role: 'level-blue',   offset: [ -0.01,  0.01, -0.04 ] },   // B
+    { label: 'Display Mode', role: 'level-orange', offset: [  0,    -0.01, -0.04 ] },   // Trigger
   ],
   left: [
-    { label: 'Preview Dist', color: 0xffee00, offset: [  0.01,  0.01, -0.04 ] },   // X
-    { label: 'Save & Export',color: 0x22cc44, offset: [ -0.01,  0.01, -0.04 ] },   // Y
-    { label: 'Display Mode', color: 0xff8800, offset: [  0,    -0.01, -0.04 ] },   // Trigger
+    { label: 'Preview Dist', role: 'level-gold',   offset: [  0.01,  0.01, -0.04 ] },   // X
+    { label: 'Save & Export',role: 'level-green',  offset: [ -0.01,  0.01, -0.04 ] },   // Y
+    { label: 'Display Mode', role: 'level-orange', offset: [  0,    -0.01, -0.04 ] },   // Trigger
   ],
 };
 
@@ -47,7 +52,7 @@ export function buildControllerMenu(world) {
     if (!grip.userData.companionMenuBuilt) {
       grip.userData.companionMenuBuilt = true;
       for (const item of items) {
-        const group = _makeIndicator(item.label, item.color, item.offset);
+        const group = _makeIndicator(item.label, threeColor(item.role, XR_SCHEME), item.offset);
         grip.add(group);
       }
     }
@@ -73,12 +78,12 @@ function _makeIndicator(label, color, offset) {
   const canvas  = document.createElement('canvas');
   canvas.width  = 256; canvas.height = 48;
   const ctx = canvas.getContext('2d');
-  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillStyle = withAlpha(canonColor('background', XR_SCHEME), 0.7);
   ctx.beginPath();
   ctx.roundRect(0, 0, 256, 48, 6);
   ctx.fill();
   ctx.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
-  ctx.font      = 'bold 18px sans-serif';
+  ctx.font      = `700 18px ${FONT_STACK}`;
   ctx.fillText(label, 8, 32);
 
   const tex  = new THREE.CanvasTexture(canvas);

@@ -5,11 +5,14 @@ import { resolve } from 'path';
  * Playwright configuration for Companion Scan E2E tests.
  *
  * Test layers:
- *   tests/e2e/modules.spec.js   — module-level tests via /harness.html (no WebXR needed)
+ *   tests/e2e/modules.spec.js   — module-level tests via /tests/harness/harness.html (no WebXR needed)
  *   tests/e2e/webxr.spec.js     — full app with IWER WebXR emulation
  *   tests/e2e/spatial.spec.js   — spatial pin creation with IWER plane/mesh emulation
  *
  * The Vite dev server (HTTP, no HTTPS for CI) is started automatically.
+ *
+ * Set PW_CHANNEL=chrome to run on the installed Google Chrome instead of Playwright's
+ * bundled Chromium, for machines where the bundled build cannot create a WebGL context.
  */
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -22,6 +25,7 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4174',
     headless: true,
+    channel: process.env.PW_CHANNEL || undefined,
     // Ignore HTTPS errors if the server uses a self-signed cert
     ignoreHTTPSErrors: true,
     // Collect traces on test failures for debugging

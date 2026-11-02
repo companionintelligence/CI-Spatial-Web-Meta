@@ -4,14 +4,39 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Companion Scan Quest — XR Spatial Mapper</title>
+    <meta name="description" content="Map a room with Meta Quest 3 and WebXR, then export a 3D glTF scan with labelled pins and a Markdown report." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Companion Scan Quest" />
+    <meta property="og:description" content="Map a room with Meta Quest 3 and WebXR, then export it as a 3D scan." />
+    <meta property="og:url" content="https://meta.ci.computer/" />
+    <link rel="canonical" href="https://meta.ci.computer/" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <style>
+      /*
+       * Canon tokens (tokens.css) and Manrope are imported by src/main.js, so the
+       * colours and faces below are the company-wide ones.
+       */
       * { margin: 0; padding: 0; box-sizing: border-box; }
-      body { background: #f5f5f5; overflow: hidden; }
+      body { background: var(--ci-bg); overflow: hidden; font-family: var(--font-sans); }
       #scene-container { width: 100dvw; height: 100dvh; }
+      .co-noscript {
+        position: fixed; inset: 0; display: grid; place-content: center; gap: 8px;
+        padding: 24px; text-align: center;
+        font: 15px/1.5 var(--font-sans); color: var(--foreground); background: var(--ci-bg);
+      }
+      .co-noscript p { max-width: 36ch; color: var(--muted-foreground); }
     </style>
   </head>
   <body>
     <div id="scene-container"></div>
+    <noscript>
+      <div class="co-noscript">
+        <strong>Companion Scan Quest needs JavaScript.</strong>
+        <p>Turn on JavaScript, then open this page in the Meta Quest Browser to scan a room in AR.</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

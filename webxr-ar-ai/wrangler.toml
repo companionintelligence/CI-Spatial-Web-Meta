@@ -1,22 +1,31 @@
 "$schema" = "./node_modules/wrangler/config-schema.json"
 name = "ci-webxr-meta"
+main = "src/worker/index.js"
 compatibility_date = "2026-09-28"
 
 [observability]
 enabled = true
 
-# Static assets only — vite build (dist/index.html + dist/viewer.html) — no
-# Worker script needed.
+# The static app comes from `vite build` (dist/: index.html, viewer.html, 404.html
+# and the brand files copied by scripts/sync-brand.mjs). The few /api routes in
+# src/worker/ run first, because the Portal and the memory servers cannot be
+# called from the browser on this origin.
 [assets]
 directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "404-page"
+run_worker_first = ["/api/*"]
 
-# Both candidate hostnames are wired so either can go live without another
-# deploy. Each needs the `ci.computer` zone active on this Cloudflare
-# account; drop whichever one you don't want once you've decided.
-[[routes]]
-pattern = "webxr.ci.computer"
-custom_domain = true
+# The CI Portal this app signs in against, and its public client (no secret).
+# Override per environment with `wrangler deploy --var` or in the dashboard.
+[vars]
+CI_PORTAL_URL = "https://hub.ci.computer"
+CI_OAUTH_CLIENT_ID = "ci-meta"
 
+# Production hostname. The `ci.computer` zone must be active on this Cloudflare
+# account. webxr.ci.computer was wired earlier as well; it is left out until the
+# owner decides to serve from it too. Add it back as another [[routes]] entry
+# with custom_domain = true.
 [[routes]]
 pattern = "meta.ci.computer"
 custom_domain = true

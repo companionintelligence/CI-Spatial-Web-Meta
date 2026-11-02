@@ -22,6 +22,7 @@
 
 import * as THREE from 'three';
 import { CameraSource } from '@iwsdk/core';
+import { FONT_STACK, XR_SCHEME, canonColor, threeColor, withAlpha } from '../ui/theme.js';
 
 const PLANE_WIDTH = 0.24;   // metres
 const PLANE_DEPTH = -0.4;   // metres forward from head
@@ -57,7 +58,7 @@ export class CameraViewfinder {
 
     // ── Video plane ──────────────────────────────────────────────────────
     this._videoMat = new THREE.MeshBasicMaterial({
-      color: 0x000000, transparent: true, opacity: 0.4, depthTest: false,
+      color: threeColor('background', XR_SCHEME), transparent: true, opacity: 0.4, depthTest: false,
     });
     const videoMesh = new THREE.Mesh(new THREE.PlaneGeometry(PLANE_WIDTH, planeH), this._videoMat);
     videoMesh.renderOrder = 1;
@@ -164,7 +165,7 @@ export class CameraViewfinder {
 
   _applyMap(tex) {
     this._videoMat.map = tex;
-    this._videoMat.color.set(0xffffff);
+    this._videoMat.color.setRGB(1, 1, 1);   // no tint: show the camera as captured
     this._videoMat.opacity = 1;
     this._videoMat.needsUpdate = true;
   }
@@ -185,15 +186,16 @@ export class CameraViewfinder {
         const [bcx, bcy, bw, bh] = bb;
         const rx = (bcx - bw / 2) * w;
         const ry = (bcy - bh / 2) * h;
-        ctx.strokeStyle = 'rgba(0, 255, 80, 0.9)';
+        ctx.strokeStyle = withAlpha(canonColor('success', XR_SCHEME), 0.9);
         ctx.lineWidth   = 2;
         ctx.strokeRect(rx, ry, bw * w, bh * h);
       }
 
-      // Glowing dot
+      // Glowing dot (canon success green, fading out)
+      const green = canonColor('success', XR_SCHEME);
       const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, 12);
-      grad.addColorStop(0, 'rgba(0,255,80,0.95)');
-      grad.addColorStop(1, 'rgba(0,255,80,0)');
+      grad.addColorStop(0, withAlpha(green, 0.95));
+      grad.addColorStop(1, withAlpha(green, 0));
       ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(cx, cy, 12, 0, Math.PI * 2);
@@ -201,15 +203,15 @@ export class CameraViewfinder {
 
       // Label pill
       const text  = `${det.label} ${Math.round((det.confidence ?? 0) * 100)}%`;
-      ctx.font     = 'bold 13px sans-serif';
+      ctx.font     = `700 13px ${FONT_STACK}`;
       const tw    = ctx.measureText(text).width;
       const px    = cx + 14;
       const py    = cy - 10;
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillStyle = withAlpha(canonColor('background', XR_SCHEME), 0.7);
       ctx.beginPath();
       ctx.roundRect(px, py, tw + 10, 20, 4);
       ctx.fill();
-      ctx.fillStyle = '#00ff50';
+      ctx.fillStyle = green;
       ctx.fillText(text, px + 5, py + 14);
     }
 

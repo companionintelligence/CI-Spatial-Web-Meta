@@ -7,13 +7,13 @@
  *   - 3D label rendering state is set on SpatialLabel3DRenderer
  *   - GltfExporter produces valid output with spatial metadata
  *
- * The tests use the /harness.html page (no WebXR needed) for pure-logic tests,
+ * The tests use the /tests/harness/harness.html page (no WebXR needed) for pure-logic tests,
  * and /index.html with IWER for tests that require actual XR planes.
  */
 import { test, expect } from '@playwright/test';
 import { installIwer, grantXrSession } from './helpers/iwer-setup.js';
 
-const HARNESS = '/harness.html';
+const HARNESS = '/tests/harness/harness.html';
 
 async function waitForHarness(page) {
   await page.waitForFunction(() => window.__harnessReady === true, { timeout: 5000 });

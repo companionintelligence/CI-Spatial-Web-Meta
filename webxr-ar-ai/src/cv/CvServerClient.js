@@ -168,3 +168,21 @@ export function videoToBase64Jpeg(videoEl, quality = 0.7) {
   canvas.getContext('2d').drawImage(videoEl, 0, 0);
   return canvas.toDataURL('image/jpeg', quality).split(',')[1];
 }
+
+/**
+ * Short, user-facing reason a CV round trip failed. The HUD and the desktop
+ * overlay show it, so it names what the user can act on.
+ * @param {unknown} err
+ * @returns {string}
+ */
+export function describeCvError(err) {
+  if (err?.name === 'AbortError') return 'CV server timed out';
+  // fetch() rejects with a TypeError when the server cannot be reached
+  // (Chromium: "Failed to fetch"; Firefox: "NetworkError…"; Safari: "Load failed").
+  if (err instanceof TypeError && /fetch|network|load failed/i.test(err.message)) {
+    return 'CV server unreachable';
+  }
+  const status = /^CV server error (\d{3})\b/.exec(String(err?.message ?? ''));
+  if (status) return `CV server error ${status[1]}`;
+  return 'CV server error';
+}

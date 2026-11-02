@@ -4,19 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Companion Scan Quest — Viewer & Editor</title>
+    <meta name="description" content="Open a Companion Scan Quest scan: view the room, edit its pins, and export." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <style>
-      /* ci.computer theming: light, minimal, black-on-white, gray accents */
-      :root {
-        --bg: #ffffff; --bg-2: #fafafa; --bg-3: #f1f1f1;
-        --text: #111111; --text-2: #6b6b6b;
-        --border: #e4e4e4; --accent: #111111;
-        --cv: #0a7d43; --scene: #2b5fd9; --warn: #b07d10; --error: #b3261e;
-      }
+      /*
+       * Companion Intelligence canon. Every colour, face and tracking value here is a
+       * custom property from @companionintelligence/tokens (tokens.css, imported by
+       * src/viewer/main.js), so the viewer follows the light and dark sets.
+       */
       * { margin: 0; padding: 0; box-sizing: border-box; }
       html, body { height: 100%; }
       body {
-        background: var(--bg); color: var(--text);
-        font: 13px/1.5 system-ui, -apple-system, sans-serif;
+        background: var(--background); color: var(--foreground);
+        font: 13px/1.5 var(--font-sans); letter-spacing: var(--font-letter-spacing);
         display: grid;
         grid-template-rows: 52px 1fr;
         grid-template-columns: 340px 1fr;
@@ -25,87 +27,96 @@
       }
       header {
         grid-area: header; display: flex; align-items: center; gap: 12px;
-        padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--bg);
+        padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--background);
       }
-      header .brand { display: flex; flex-direction: column; margin-right: 8px; }
-      header h1 { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
-      header .brand small { color: var(--text-2); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; }
-      header .hint { color: var(--text-2); font-size: 12px; margin-left: auto; }
+      header .brand { display: flex; align-items: center; gap: 10px; margin-right: 8px; }
+      header .brand-mark { display: block; flex: none; }
+      header .brand-text { display: flex; flex-direction: column; }
+      header h1 { font-size: var(--type-card-title); font-weight: var(--type-card-title-weight); letter-spacing: var(--type-title-tracking); }
+      header .brand small {
+        color: var(--label-ink); font-size: 10px; font-weight: var(--type-label-weight);
+        letter-spacing: var(--type-label-tracking); text-transform: var(--type-label-transform);
+      }
+      header .hint { color: var(--muted-foreground); font-size: 12px; margin-left: auto; }
       header label, header button, header select {
-        background: var(--bg); border: 1px solid var(--text); color: var(--text);
-        border-radius: 8px; padding: 5px 12px; font: 600 12.5px system-ui, sans-serif;
+        background: transparent; border: 1px solid var(--button-ghost-border); color: var(--button-ghost-foreground);
+        border-radius: var(--radius-control); padding: 5px 12px; font: 600 12.5px var(--font-sans);
         cursor: pointer;
       }
-      header label:hover, header button:hover { background: var(--bg-3); }
+      header label:hover, header button:hover { background: var(--button-ghost-hover); border-color: var(--button-ghost-border-hover); }
       header input[type="file"] { display: none; }
       aside {
-        grid-area: sidebar; overflow-y: auto; background: var(--bg-2);
+        grid-area: sidebar; overflow-y: auto; background: var(--card);
         border-right: 1px solid var(--border); padding: 14px;
       }
       aside h2 {
         font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em;
-        color: var(--text-2); margin: 16px 0 6px; display: flex; align-items: center; gap: 6px;
+        color: var(--muted-foreground); margin: 16px 0 6px; display: flex; align-items: center; gap: 6px;
       }
       aside h2:first-child { margin-top: 0; }
-      aside h2 button { background: none; border: none; color: var(--text); cursor: pointer; font-size: 13px; padding: 0 4px; }
+      aside h2 button { background: none; border: none; color: var(--foreground); cursor: pointer; font-size: 13px; padding: 0 4px; }
       #scan-stats td { padding: 2px 0; vertical-align: top; font-size: 12px; }
-      #scan-stats td:first-child { color: var(--text-2); width: 84px; }
-      #filters label { margin-right: 12px; font-size: 12px; cursor: pointer; color: var(--text); }
+      #scan-stats td:first-child { color: var(--muted-foreground); width: 84px; }
+      #filters label { margin-right: 12px; font-size: 12px; cursor: pointer; color: var(--foreground); }
       ul { list-style: none; }
       #server-scans li, #pin-list li {
-        padding: 6px 8px; border-radius: 8px; cursor: pointer; margin-bottom: 2px;
+        padding: 6px 8px; border-radius: var(--radius-control); cursor: pointer; margin-bottom: 2px;
         display: flex; justify-content: space-between; gap: 8px; align-items: baseline;
         border: 1px solid transparent;
       }
-      #server-scans li:hover, #pin-list li:hover { background: var(--bg-3); }
-      #pin-list li.selected { border-color: var(--text); background: var(--bg-3); }
-      li.note { color: var(--text-2); cursor: default; font-size: 12px; }
+      #server-scans li:hover, #pin-list li:hover { background: var(--muted); }
+      #pin-list li.selected { border-color: var(--foreground); background: var(--muted); }
+      li.note { color: var(--muted-foreground); cursor: default; font-size: 12px; }
       li.note:hover { background: none !important; }
-      .src-CvServer  { color: var(--cv); font-weight: 600; }
-      .src-MetaScene { color: var(--scene); font-weight: 600; }
-      .meta { color: var(--text-2); font-size: 11px; white-space: nowrap; }
-      #editor { border: 1px solid var(--border); border-radius: 10px; padding: 10px; background: var(--bg); }
+      .src-CvServer  { color: var(--success); font-weight: 600; }
+      .src-MetaScene { color: var(--info); font-weight: 600; }
+      .meta { color: var(--muted-foreground); font-size: 11px; white-space: nowrap; }
+      #editor { border: 1px solid var(--border); border-radius: var(--radius-card); padding: 10px; background: var(--background); }
       #editor.hidden { display: none; }
       #editor .row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
-      #editor .row > span, #editor .row > label { width: 70px; color: var(--text-2); font-size: 12px; }
+      #editor .row > span, #editor .row > label { width: 70px; color: var(--muted-foreground); font-size: 12px; }
       #editor input {
-        flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 6px;
-        padding: 4px 6px; font: 12.5px system-ui, sans-serif; background: var(--bg);
-        color: var(--text);
+        flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-control);
+        padding: 4px 6px; font: 12.5px var(--font-sans); background: var(--background);
+        color: var(--foreground);
       }
       #editor .actions { display: flex; gap: 8px; margin-top: 8px; }
       #editor button {
-        border-radius: 8px; padding: 5px 12px; font: 600 12.5px system-ui, sans-serif;
-        cursor: pointer; border: 1px solid var(--text);
+        border-radius: var(--radius-control); padding: 5px 12px; font: 600 12.5px var(--font-sans);
+        cursor: pointer; border: 1px solid var(--button-ghost-border);
       }
-      #pin-apply  { background: var(--accent); color: #fff; }
-      #pin-delete { background: var(--bg); color: var(--error); border-color: var(--error); }
-      main#viewport { grid-area: viewport; position: relative; background: var(--bg-3); }
+      #pin-apply  { background: var(--button-primary); color: var(--button-primary-foreground); border-color: transparent; box-shadow: var(--button-primary-shadow); }
+      #pin-apply:hover { background: var(--button-primary-hover); }
+      #pin-delete { background: var(--background); color: var(--destructive); border-color: var(--destructive); }
+      main#viewport { grid-area: viewport; position: relative; background: var(--muted); }
       main#viewport canvas { display: block; }
       #dropzone {
         position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-        color: var(--text-2); font-size: 15px; pointer-events: none; text-align: center;
+        color: var(--muted-foreground); font-size: 15px; pointer-events: none; text-align: center;
       }
       #dropzone.hidden { display: none; }
-      body.dragging #dropzone { color: var(--text); }
+      body.dragging #dropzone { color: var(--foreground); }
       #conn-row { display: flex; gap: 6px; margin-bottom: 6px; }
       #conn-row input {
-        flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 6px;
-        padding: 4px 6px; font: 12.5px system-ui, sans-serif; background: var(--bg); color: var(--text);
+        flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: var(--radius-control);
+        padding: 4px 6px; font: 12.5px var(--font-sans); background: var(--background); color: var(--foreground);
       }
       #conn-row button, #conn-oauth-connect, #conn-oauth-disconnect {
-        border-radius: 8px; padding: 4px 10px; font: 600 12.5px system-ui, sans-serif;
-        cursor: pointer; border: 1px solid var(--text); background: var(--bg); color: var(--text);
+        border-radius: var(--radius-control); padding: 4px 10px; font: 600 12.5px var(--font-sans);
+        cursor: pointer; border: 1px solid var(--button-ghost-border); background: transparent; color: var(--button-ghost-foreground);
       }
       #conn-oauth-connect, #conn-oauth-disconnect { margin-right: 6px; margin-bottom: 6px; }
-      #conn-status { color: var(--text-2); font-size: 11px; }
+      #conn-status { color: var(--muted-foreground); font-size: 11px; }
     </style>
   </head>
   <body>
     <header>
       <div class="brand">
-        <h1>Companion Scan Quest</h1>
-        <small>Companion Intelligence · Viewer &amp; Editor</small>
+        <img class="brand-mark" src="/brand/mark.svg" alt="" width="28" height="28" />
+        <div class="brand-text">
+          <h1>Companion Scan Quest</h1>
+          <small>Companion Intelligence · Viewer &amp; Editor</small>
+        </div>
       </div>
       <label>Open GLB<input id="file-input" type="file" accept=".glb,.gltf,model/gltf-binary" /></label>
       <select id="sample-select" aria-label="Sample home"><option value="">Sample home…</option></select>
@@ -120,7 +131,7 @@
         <input id="conn-url" type="text" placeholder="Server URL (blank = same origin)" />
         <button id="conn-save">Save</button>
       </div>
-      <button id="conn-oauth-connect">Connect via OAuth</button>
+      <button id="conn-oauth-connect">Sign in with Companion Intelligence</button>
       <button id="conn-oauth-disconnect">Sign out</button>
       <div id="conn-status"></div>
       <h2>Server scans <button id="scan-refresh" title="Refresh">⟳</button></h2>

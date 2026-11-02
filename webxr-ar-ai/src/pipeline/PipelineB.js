@@ -13,22 +13,27 @@
  *      (SceneRaycaster). On a hit, the pin lands on the real surface; on a
  *      miss, it falls back to a fixed distance along the ray.
  *
+ * The CV server is optional. When it cannot be reached, capture still places
+ * the scene pins (Pipeline A) and returns an `error` that describes the
+ * failure, which the caller reports as a partial result.
+ *
  * Camera intrinsics: the passthrough RGB camera has its own FOV, distinct
  * from the render-eye projection. There is no browser API to query it, so the
- * horizontal FOV defaults to DEFAULT_CAMERA_HFOV_DEG and can be calibrated
- * per device via the `?hfov=<degrees>` URL parameter. The vertical FOV is
- * derived from the video aspect ratio via the pinhole model.
+ * horizontal FOV comes from cameraCalibration.js: a `?hfov=<degrees>` URL
+ * parameter, else the value saved on this device from the overlay, else the
+ * default. It is re-read at every capture, so a saved change applies at once.
+ * The vertical FOV is derived from the video aspect ratio via the pinhole model.
  */
 
 import * as THREE from 'three';
 import { CameraSource, CameraFacing } from '@iwsdk/core';
 import { SpatialPin, PinSource } from '../spatial/SpatialPin.js';
 import { encodeVideoFrame } from '../cv/CaptureEncoder.js';
+import { describeCvError } from '../cv/CvServerClient.js';
 import { ModelPreset, appState } from '../app/AppState.js';
 import { SceneRaycaster } from './SceneRaycaster.js';
+import { resolveCameraHfov, getLocalStorage } from './cameraCalibration.js';
 
-/** Approximate Quest 3 passthrough-camera horizontal FOV; tune with ?hfov= */
-const DEFAULT_CAMERA_HFOV_DEG = 80;
 /** Pin distance along the ray when no scene geometry is hit (metres). */
 const DEFAULT_FALLBACK_DISTANCE = 2.5;
 /** Maximum scene-raycast distance (metres). */
@@ -52,7 +57,9 @@ export class PipelineB {
 
     this._raycaster = new SceneRaycaster();
 
-    this._hfov = (_hfovOverrideDeg() ?? DEFAULT_CAMERA_HFOV_DEG) * Math.PI / 180;
+    this._hfovDeg = null;
+    this._hfov    = 0;
+    this._refreshHfov();
     this._vfov = this._deriveVfov(16 / 9);
 
     /** Pose at the moment of the last frame capture (world space). */
@@ -123,15 +130,16 @@ export class PipelineB {
     try {
       detections = await this._runModels(base64, videoEl);
     } catch (err) {
-      console.error('[PipelineB] CV server error:', err);
-      return { pins: [], rays: [], error: String(err?.message ?? err) };
+      console.warn('[PipelineB] CV server unavailable:', err);
+      return { pins: [], rays: [], error: describeCvError(err) };
     }
 
     return this.placeDetections(captureId, detections, raycastTargets);
   }
 
-  /** Record the current viewer pose as the capture pose. */
+  /** Record the current viewer pose as the capture pose, and re-read the camera FOV. */
   snapshotPose() {
+    this._refreshHfov();
     this.world.camera.getWorldPosition(this._capturePos);
     this.world.camera.getWorldQuaternion(this._captureQuat);
   }
@@ -197,6 +205,23 @@ export class PipelineB {
   // ── Private ───────────────────────────────────────────────────────────────
 
   /**
+   * Re-read the camera calibration: the `?hfov=` URL override, else the value
+   * saved on this device, else the default.
+   * @returns {number} horizontal FOV in radians
+   */
+  _refreshHfov() {
+    const { deg } = resolveCameraHfov({
+      search:  globalThis.location?.search ?? '',
+      storage: getLocalStorage(),
+    });
+    if (deg !== this._hfovDeg) {
+      this._hfovDeg = deg;
+      this._hfov    = deg * Math.PI / 180;
+    }
+    return this._hfov;
+  }
+
+  /**
    * Run the active model preset against an encoded frame.
    * @returns {Promise<Array<object>>} normalised detections
    */
@@ -256,16 +281,5 @@ export class PipelineB {
   /** Pinhole-consistent vertical FOV for the given aspect ratio. */
   _deriveVfov(aspect) {
     return 2 * Math.atan(Math.tan(this._hfov / 2) / aspect);
-  }
-}
-
-/** Optional per-device calibration via `?hfov=<degrees>`. */
-function _hfovOverrideDeg() {
-  try {
-    const v = new URLSearchParams(globalThis.location?.search ?? '').get('hfov');
-    const deg = v ? Number(v) : NaN;
-    return Number.isFinite(deg) && deg > 20 && deg < 160 ? deg : null;
-  } catch {
-    return null;
   }
 }

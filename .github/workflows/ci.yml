@@ -31,6 +31,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+        env:
+          # Reads the org's @companionintelligence packages (see webxr-ar-ai/.npmrc).
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Canon lint (ci-lint-canon)
+        run: npm run lint:canon
 
       - name: Unit tests (Vitest)
         run: npm run test:unit
