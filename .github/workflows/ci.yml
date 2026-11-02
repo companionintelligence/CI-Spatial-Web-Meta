@@ -13,6 +13,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# npm ci reads @companionintelligence/* from GitHub Packages through NODE_AUTH_TOKEN
+# (see webxr-ar-ai/.npmrc), which needs `packages: read`.
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   web:
     name: Web (unit + e2e + build)
