@@ -5,10 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Companion Scan Quest — XR Spatial Mapper</title>
     <meta name="description" content="Map a room with Meta Quest 3 and WebXR, then export a 3D glTF scan with labelled pins and a Markdown report." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Companion Intelligence" />
+    <meta property="og:locale" content="en_US" />
     <meta property="og:title" content="Companion Scan Quest" />
     <meta property="og:description" content="Map a room with Meta Quest 3 and WebXR, then export it as a 3D scan." />
     <meta property="og:url" content="https://meta.ci.computer/" />
+    <meta property="og:image" content="https://meta.ci.computer/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Companion Scan Quest: a 3D room scan with labelled pins in the desktop viewer, with the headline Map a room with Quest 3." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Companion Scan Quest" />
+    <meta name="twitter:description" content="Map a room with Meta Quest 3 and WebXR, then export it as a 3D scan." />
+    <meta name="twitter:image" content="https://meta.ci.computer/og-image.png" />
+    <meta name="twitter:image:alt" content="Companion Scan Quest: a 3D room scan with labelled pins in the desktop viewer, with the headline Map a room with Quest 3." />
     <link rel="canonical" href="https://meta.ci.computer/" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png" />
@@ -28,6 +41,50 @@
       }
       .co-noscript p { max-width: 36ch; color: var(--muted-foreground); }
     </style>
+    <!-- Structured data. A data block, not a script that runs, so it needs no CSP allowance.
+         Only facts from the README and the app itself: no price, no rating, no availability. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://ci.computer/#organization",
+            "name": "Companion Intelligence",
+            "url": "https://ci.computer/"
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://meta.ci.computer/#website",
+            "name": "Companion Scan Quest",
+            "url": "https://meta.ci.computer/",
+            "inLanguage": "en",
+            "publisher": { "@id": "https://ci.computer/#organization" }
+          },
+          {
+            "@type": "WebPage",
+            "@id": "https://meta.ci.computer/#webpage",
+            "name": "Companion Scan Quest — XR Spatial Mapper",
+            "url": "https://meta.ci.computer/",
+            "inLanguage": "en",
+            "isPartOf": { "@id": "https://meta.ci.computer/#website" },
+            "about": { "@id": "https://meta.ci.computer/#app" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://meta.ci.computer/#app",
+            "name": "Companion Scan Quest",
+            "url": "https://meta.ci.computer/",
+            "applicationCategory": "MultimediaApplication",
+            "operatingSystem": "Meta Quest 3 browser (WebXR); any desktop browser for the viewer",
+            "description": "Map a room with Meta Quest 3 and WebXR, then export a 3D glTF scan with labelled pins and a Markdown report.",
+            "image": "https://meta.ci.computer/og-image.png",
+            "publisher": { "@id": "https://ci.computer/#organization" },
+            "sameAs": ["https://github.com/companionintelligence/CI-Spatial-Web-Meta"]
+          }
+        ]
+      }
+    </script>
   </head>
   <body>
     <div id="scene-container"></div>

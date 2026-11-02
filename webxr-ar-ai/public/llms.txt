@@ -1,0 +1,15 @@
+# Companion Scan Quest
+
+> Companion Scan Quest maps a room with Meta Quest 3 and WebXR. It places labelled pins on the surfaces and objects it finds, then exports a 3D glTF scan (.glb) with a Markdown report. The scan can be opened and edited in a desktop viewer.
+
+Companion Scan Quest is part of the Companion Intelligence platform (https://ci.computer/). Scanning works without signing in. Signing in with a Companion Intelligence account lets the app find your memory servers and their language models. Pins and room geometry are kept in the browser between sessions. Remote vision is optional: you point the app at a CV server. Support: support@ci.computer
+
+## Pages
+
+- [Scan app](https://meta.ci.computer/): a status overlay on desktop, and the WebXR session on Meta Quest 3
+- [Desktop viewer](https://meta.ci.computer/viewer): open and edit an exported scan in a browser
+
+## Optional
+
+- [Source code](https://github.com/companionintelligence/CI-Spatial-Web-Meta): project README and documentation
+- [Companion Intelligence](https://ci.computer/): the platform this app belongs to
