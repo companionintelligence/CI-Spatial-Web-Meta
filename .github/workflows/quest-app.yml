@@ -157,7 +157,7 @@ jobs:
           printf '%s' "$QUEST_KEYSTORE_BASE64" | base64 --decode > "$QUEST_KEYSTORE"
           EXPECTED_CERT_SHA256="$expected" quest/sign.sh "$RUNNER_TEMP/unsigned" "$RUNNER_TEMP/signed"
 
-          cp "$RUNNER_TEMP"/unsigned/{LICENSE,NOTICE.md,THIRD_PARTY.md} "$RUNNER_TEMP/signed/"
+          cp "$RUNNER_TEMP"/unsigned/{LICENSE,NOTICE.md,THIRD_PARTY.md,ANDROID-LIBRARIES.txt} "$RUNNER_TEMP/signed/"
           (cd "$RUNNER_TEMP/signed" && sha256sum -- *.apk *.aab > SHA256SUMS)
 
       - uses: actions/upload-artifact@v4

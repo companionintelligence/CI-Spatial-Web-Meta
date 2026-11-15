@@ -94,7 +94,7 @@ gh workflow run quest-app.yml --repo companionintelligence/CI-Spatial-Web-Meta -
 The **build** job checks that the site serves the manifest and the icon (Bubblewrap copies both
 from the live site, so deploy first), generates the Android project, and uploads
 `companion-scan-quest-<version>-<code>-unsigned` with the APK, the AAB, `LICENSE`, `NOTICE.md`,
-`THIRD_PARTY.md` and `SHA256SUMS`. It never sees a signing secret.
+`THIRD_PARTY.md`, `ANDROID-LIBRARIES.txt` and `SHA256SUMS`. It never sees a signing secret.
 
 The **sign** job runs only with `sign` ticked. It uses the `quest-release` environment, which needs:
 
@@ -121,10 +121,27 @@ QUEST_KEYSTORE=release.keystore QUEST_KEYSTORE_PASSWORD=… quest/sign.sh out ou
 
 `quest/build.sh` takes the steps `bubblewrap build` takes (`bubblewrap update`, then `gradlew
 assembleRelease bundleRelease`, then the zip-alignment check) but keeps signing apart, gives
-Bubblewrap a home directory of its own, and copies `LICENSE`, `NOTICE.md` and `THIRD_PARTY.md` into
-the APK's assets. It also works in Git Bash on Windows, where `bubblewrap build` itself fails with
-`spawn EINVAL` (current Node refuses to start `gradlew.bat` without a shell). For a dry run before the
-manifest is deployed, point `WEB_MANIFEST_URL` at another copy of it.
+Bubblewrap a home directory of its own, and puts the notices in the APK (below). It also works in
+Git Bash on Windows, where `bubblewrap build` itself fails with `spawn EINVAL` (current Node refuses
+to start `gradlew.bat` without a shell). For a dry run before the manifest is deployed, point
+`WEB_MANIFEST_URL` at another copy of it.
+
+### What the APK contains, and under which licences
+
+- Under `assets/licenses/`: this repository's `LICENSE` (with the Required Notice), `NOTICE.md` and
+  `THIRD_PARTY.md`, and `ANDROID-LIBRARIES.txt`, written at build time from the libraries Gradle
+  resolves. The build stops on a library whose licence it does not know.
+- The Android project Bubblewrap generates: Google's Trusted Web Activity template (Apache-2.0)
+  with Meta's changes.
+- Meta's `androidbrowserhelper` 2.5.0, `horizonpermissions` 1.0.0 and `horizonplatformsdk` 1.1.0,
+  the Horizon Platform SDK 71 and the Horizon billing compatibility library 1.0.0. These are under the
+  [Meta Platform Technologies SDK License Agreement](https://developer.oculus.com/licenses/oculussdk/),
+  not an open-source licence. Distributing the APK is distributing them under Meta's terms.
+- AndroidX, Guava's `listenablefuture`, the Kotlin standard library and JetBrains annotations
+  (Apache-2.0).
+
+The web app itself is not in the APK. The app opens the site, which serves its own notices at
+`/licenses.txt`.
 
 ## Releasing: the owner's steps
 
