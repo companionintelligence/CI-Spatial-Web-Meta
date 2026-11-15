@@ -125,6 +125,8 @@ const STYLE = `
   transform: var(--button-primary-lift-hover);
 }
 #co-status-line { min-height: 18px; margin-top: 8px; font-weight: 600; }
+#co-overlay .co-legal { margin-top: 8px; font-size: 11.5px; }
+#co-overlay .co-legal a { color: var(--muted-foreground); }
 #co-overlay .co-row { display: flex; gap: 6px; margin-bottom: 6px; align-items: center; }
 #co-overlay .co-row input {
   flex: 1; min-width: 0; border: 1px solid var(--ci-border-2); border-radius: var(--radius-control);
@@ -229,6 +231,7 @@ export class DesktopOverlay {
         <button id="co-clear">Clear Scan</button>
         <div id="co-status-line"></div>
       </div>
+      <div class="co-legal"><a href="/licenses.txt" target="_blank" rel="noopener">Licences</a></div>
     `;
     document.body.appendChild(this._root);
 
