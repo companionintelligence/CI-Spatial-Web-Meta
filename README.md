@@ -430,11 +430,26 @@ Or trigger it from CI — automatic deploys are gated the same way as
 gh workflow run deploy.yml --repo companionintelligence/CI-Spatial-Web-Meta --ref main
 ```
 
-That needs two repo secrets (Settings → Secrets and variables → Actions →
-Secrets) — `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit) and
-`CLOUDFLARE_ACCOUNT_ID`. The OAuth/default-server build variables from
-`.env.example` are optional and read from **Variables** in the same repo
-settings tab if you want them baked into the deployed build.
+The workflow needs three things from the owner, set once:
+
+1. **Read access to the org's packages.** `npm ci` (in `deploy.yml` and `ci.yml`) reads
+   `@companionintelligence/fonts`, `tokens`, `assets`, `config` and `content` from GitHub
+   Packages with the run's `GITHUB_TOKEN`. That token can read a package only when the
+   package grants this repository access. For each of the five: the organization's
+   **Packages** tab → the package → **Package settings** → **Manage Actions access** →
+   **Add repository** → `CI-Spatial-Web-Meta`, role **Read**. Without it `npm ci` stops with
+   `403 permission_denied: read_package`.
+2. **`CLOUDFLARE_API_TOKEN`**, a repository secret (Settings → Secrets and variables →
+   Actions → Secrets). In the Cloudflare dashboard: Account API tokens → Create token →
+   the **Edit Cloudflare Workers** template, limited to this account and the `ci.computer`
+   zone. It needs Workers Scripts Edit, and Workers Routes Edit on the zone, so the
+   `meta.ci.computer` custom domain can attach.
+3. **`CLOUDFLARE_ACCOUNT_ID`**, a repository secret.
+
+The workflow checks the two secrets before it installs anything, and after the deploy it
+checks that `/`, `/api/health` and `/robots.txt` answer on https://meta.ci.computer. The
+OAuth/default-server build variables from `.env.example` are optional and read from
+**Variables** in the same repo settings tab if you want them baked into the deployed build.
 
 <!-- companion-hub-readme-deep-review -->
 

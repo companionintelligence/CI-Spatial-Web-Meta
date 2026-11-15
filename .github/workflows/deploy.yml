@@ -1,8 +1,26 @@
 name: Deploy (Cloudflare)
 
+# Builds webxr-ar-ai and deploys the Worker (webxr-ar-ai/wrangler.toml, name
+# "ci-webxr-meta") that serves it, with its /api routes, at https://meta.ci.computer.
+#
+# Requires, none of which this workflow creates (README, "Deploy"):
+#   - read access for this repository to the org's @companionintelligence packages
+#     (fonts, tokens, assets, config, content), granted in each package's settings
+#     under "Manage Actions access". npm ci reads them with GITHUB_TOKEN.
+#   - repository secrets CLOUDFLARE_API_TOKEN (the "Edit Cloudflare Workers" token
+#     template, for this account and the ci.computer zone: Workers Scripts Edit and
+#     Workers Routes Edit, so the meta.ci.computer custom domain can attach) and
+#     CLOUDFLARE_ACCOUNT_ID.
+#
 # Manual only — see docs/CI.md for why automatic triggers are gated off.
 on:
   workflow_dispatch: {}
+
+permissions:
+  contents: read
+  # npm ci reads the @companionintelligence packages from GitHub Packages, and an
+  # explicit permissions block drops every scope it does not list.
+  packages: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,6 +34,17 @@ jobs:
       run:
         working-directory: webxr-ar-ai
     steps:
+      # Fail in seconds, before the install and build, when a Cloudflare secret is
+      # missing. The deploy step would fail the same way minutes later.
+      - name: Check Cloudflare secrets
+        working-directory: .
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          : "${CLOUDFLARE_API_TOKEN:?add the CLOUDFLARE_API_TOKEN repository secret (README, Deploy)}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?add the CLOUDFLARE_ACCOUNT_ID repository secret (README, Deploy)}"
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -25,7 +54,11 @@ jobs:
           cache-dependency-path: webxr-ar-ai/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          if ! npm ci --no-audit --no-fund; then
+            echo "::error::npm ci failed. A 403 read_package above means this repository has no read access to an @companionintelligence package yet (README, Deploy)."
+            exit 1
+          fi
         env:
           # Reads the org's @companionintelligence packages (see webxr-ar-ai/.npmrc).
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -47,3 +80,17 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN:  ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Check the live site
+        run: |
+          # The custom domain can take a moment to serve the new version.
+          for path in / /api/health /robots.txt; do
+            status=000
+            for _ in 1 2 3 4 5 6; do
+              status=$(curl -s -o /dev/null -w '%{http_code}' "https://meta.ci.computer$path")
+              [ "$status" = 200 ] && break
+              sleep 10
+            done
+            echo "https://meta.ci.computer$path answered $status"
+            [ "$status" = 200 ] || { echo "::error::https://meta.ci.computer$path answered $status after the deploy."; exit 1; }
+          done

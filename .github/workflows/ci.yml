@@ -9,6 +9,16 @@ name: CI
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  # npm ci reads the org's @companionintelligence packages from GitHub Packages
+  # with this run's GITHUB_TOKEN (webxr-ar-ai/.npmrc). The token can read them only
+  # once each package grants this repository read access ("Manage Actions access"
+  # in the package's settings; README, "Deploy"). Without the grant npm ci fails
+  # with 403 permission_denied: read_package. An explicit permissions block drops
+  # every scope it does not list, so packages: read must stay here.
+  packages: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -30,7 +40,11 @@ jobs:
           cache-dependency-path: webxr-ar-ai/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: |
+          if ! npm ci --no-audit --no-fund; then
+            echo "::error::npm ci failed. A 403 read_package above means this repository has no read access to an @companionintelligence package yet (README, Deploy)."
+            exit 1
+          fi
         env:
           # Reads the org's @companionintelligence packages (see webxr-ar-ai/.npmrc).
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
