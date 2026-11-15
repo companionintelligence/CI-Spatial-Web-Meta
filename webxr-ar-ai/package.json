@@ -10,6 +10,8 @@
     "prebuild": "node scripts/sync-brand.mjs",
     "build": "vite build",
     "brand:check": "node scripts/sync-brand.mjs --check",
+    "licenses": "node scripts/third-party.mjs",
+    "licenses:check": "node scripts/third-party.mjs --check",
     "dev:worker": "wrangler dev --port 8787",
     "preview": "vite preview",
     "test": "vitest run",
