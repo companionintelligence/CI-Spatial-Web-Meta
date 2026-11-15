@@ -45,6 +45,12 @@ warning (Advanced → Proceed).
 | 7 | Press **Left Y** (export) | `companion-scan-*.glb` lands in the headset **Downloads** folder; HUD: yellow *Saved … upload failed* without a server, green *Exported …* with one |
 | 8 | Exit AR (system button) | Desktop overlay reappears with live pin counts; camera indicator LED turns off |
 
+## The Quest app
+
+The packaged app opens straight into AR instead of showing the panel first, and has an
+**Enter AR** button on the panel for coming back. Its own checklist, with sideloading, is in
+[quest-app.md](quest-app.md#checking-it-on-a-quest-3).
+
 ## Full pipeline test (CV server running)
 
 1. Overlay shows *CV server: Online* (badge polls every 8 s).

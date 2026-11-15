@@ -168,3 +168,8 @@ webxr-ar-ai/public/favicon.ico
 webxr-ar-ai/public/apple-touch-icon.png
 webxr-ar-ai/public/icon-192.png
 webxr-ar-ai/public/icon-512.png
+
+# Quest app (quest/): a signing key never goes in the repository
+*.keystore
+*.jks
+*.p12

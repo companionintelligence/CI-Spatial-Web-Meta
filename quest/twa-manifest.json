@@ -1,0 +1,55 @@
+{
+  "packageId": "computer.ci.meta.twa",
+  "applicationId": "0",
+  "host": "meta.ci.computer",
+  "name": "Companion Scan Quest",
+  "launcherName": "Scan Quest",
+  "display": "standalone",
+  "themeColor": "#041620",
+  "themeColorDark": "#041620",
+  "navigationColor": "#000000",
+  "navigationColorDark": "#000000",
+  "navigationDividerColor": "#000000",
+  "navigationDividerColorDark": "#000000",
+  "backgroundColor": "#041620",
+  "enableNotifications": false,
+  "enableMicrophone": false,
+  "enableXRScene": true,
+  "startUrl": "/?source=quest-app",
+  "iconUrl": "https://meta.ci.computer/icon-512.png",
+  "maskableIconUrl": "https://meta.ci.computer/icon-512.png",
+  "splashScreenFadeOutDuration": 300,
+  "signingKey": {
+    "path": "./android.keystore",
+    "alias": "android"
+  },
+  "appVersionName": "1.0.0",
+  "appVersionCode": 1,
+  "shortcuts": [],
+  "generatorApp": "bubblewrap-cli",
+  "webManifestUrl": "https://meta.ci.computer/manifest.webmanifest",
+  "fallbackType": "customtabs",
+  "features": {
+    "horizonPlatformSDK": {
+      "enabled": true
+    }
+  },
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "isMetaQuest": true,
+  "horizonOSAppMode": "immersive",
+  "fullScopeUrl": "https://meta.ci.computer/",
+  "minSdkVersion": 23,
+  "orientation": "default",
+  "fingerprints": [],
+  "additionalTrustedOrigins": [],
+  "retainedBundles": [],
+  "protocolHandlers": [],
+  "fileHandlers": [],
+  "launchHandlerClientMode": "",
+  "displayOverride": [],
+  "appVersion": "1.0.0"
+}

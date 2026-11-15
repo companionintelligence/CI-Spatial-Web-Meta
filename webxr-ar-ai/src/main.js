@@ -45,6 +45,8 @@ import { GltfSyncClient }            from './export/GltfSyncClient.js';
 import { downloadGlb }               from './export/GltfDownload.js';
 import { initColorScheme }           from './ui/theme.js';
 import { finishSignIn }              from './net/PortalSession.js';
+import { detectQuestApp, shouldEnterArOnLoad } from './app/questApp.js';
+import { startArSession }            from './app/arSession.js';
 import '@companionintelligence/tokens/tokens.css';
 import '@companionintelligence/fonts/manrope.css';
 
@@ -61,10 +63,15 @@ const ROOM_CAPTURE_GRACE_MS = 2000;
 // The canon colour set follows the device (light or dark) for the 2D overlay.
 initColorScheme();
 
+// The Quest app (this site packaged for Horizon OS, see docs/quest-app.md) opens
+// with ?source=quest-app and starts AR by itself; a browser tab is offered AR.
+const questApp = detectQuestApp();
+
 const linkSettings = connection.applyUrlParams();
 let signInError = null;
+let signedIn = null;
 try {
-  await finishSignIn();
+  signedIn = await finishSignIn();
 } catch (err) {
   signInError = err;
   console.error('[CompanionScan] Sign-in failed:', err);
@@ -81,7 +88,11 @@ const world = await World.create(container, {
       meshDetection:  true,
       anchors:        true,   // persistent anchor — scans re-localize across sessions
     },
-    offer: 'always',
+    // In a browser tab IWSDK offers the session, which the Meta Quest Browser shows
+    // as Enter AR, and offers it again whenever a session ends. The Quest app has no
+    // browser bar to show it in: it starts the session itself (end of this file) and
+    // from the panel's Enter AR button.
+    offer: questApp ? 'none' : 'always',
   },
   features: {
     sceneUnderstanding: true,      // auto-registers SceneUnderstandingSystem + XRPlane/XRMesh
@@ -121,6 +132,7 @@ const desktopOverlay = new DesktopOverlay({
   connection,
   onDownload: () => downloadGlb(scanRoot, pinManager),
   onClear:    clearScan,
+  onEnterAr:  questApp ? () => startArSession(world) : null,
 });
 desktopOverlay.init(world);
 if (linkSettings.serverSet) {
@@ -139,6 +151,8 @@ window.__companionScan = {
   pinManager, appState, scanRoot, scanStorage, clearScan, SpatialPin,
   geometryStore,
   flushGeometry: () => geometryStore.flush(),
+  questApp,
+  exitAr: () => world.exitXR(),
 };
 
 // ── CompanionScanSystem ────────────────────────────────────────────────────
@@ -399,3 +413,22 @@ window.__companionScan.placeDetections = (captureId, detections) => {
   sys._pipelineB.snapshotPose();
   return sys._pipelineB.placeDetections(captureId, detections, targets);
 };
+
+// ── Quest app: straight into AR ────────────────────────────────────────────
+//
+// An immersive Horizon OS app requests its session as soon as the page is ready;
+// the launch tap is the user activation. Everything above is registered first, so
+// the systems see the session start. If the request is refused, the panel says so
+// and its Enter AR button tries again.
+
+if (questApp) {
+  const arSupported = await Promise.resolve(navigator.xr?.isSessionSupported?.('immersive-ar'))
+    .then(Boolean, () => false);
+  const signInReturn = Boolean(signedIn || signInError);
+  if (shouldEnterArOnLoad({ questApp, arSupported, signInReturn })) {
+    startArSession(world).catch((err) => {
+      console.warn('[CompanionScan] AR did not start on launch:', err);
+      desktopOverlay.reportArError(err);
+    });
+  }
+}

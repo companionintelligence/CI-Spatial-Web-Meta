@@ -11,6 +11,8 @@
  *   POST /api/oauth/token   { code, codeVerifier, redirectUri } → { accessToken, idToken, expiresIn, scope }
  *   GET  /api/session       Bearer <idToken> → { sub, email, name }
  *   POST /api/discover      { accessToken, idToken } → memory servers and their language models
+ *   GET  /.well-known/assetlinks.json → the Quest app's Digital Asset Links, from the
+ *                           Worker's QUEST_APP_* settings (404 until a fingerprint is set)
  *
  * Refresh tokens never leave the Worker. Discovery only ever calls the memory
  * servers the Portal itself lists for the signed-in user, over https (or loopback
@@ -20,7 +22,9 @@
  * named entry here: the Workers runtime rejects any other export from this module.
  */
 
-import { isAllowedRedirect, memoryBase, settings } from './rules.js';
+import { assetLinks, isAllowedRedirect, memoryBase, settings } from './rules.js';
+
+const ASSET_LINKS_PATH = '/.well-known/assetlinks.json';
 
 /** The Portal app slug a user's memory server is installed under. */
 const MEMORY_APP_SLUG = 'ci-memory';
@@ -31,9 +35,10 @@ const MAX_MODELS = 50;
 const MAX_BODY_BYTES = 8 * 1024;
 
 export default {
-  /** @param {Request} request @param {{ ASSETS: { fetch: (r: Request) => Promise<Response> }, CI_PORTAL_URL?: string, CI_OAUTH_CLIENT_ID?: string }} env */
+  /** @param {Request} request @param {{ ASSETS: { fetch: (r: Request) => Promise<Response> }, CI_PORTAL_URL?: string, CI_OAUTH_CLIENT_ID?: string, QUEST_APP_PACKAGE?: string, QUEST_APP_CERT_SHA256?: string }} env */
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === ASSET_LINKS_PATH) return assetLinksResponse(request, env);
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     try {
       return await route(request, url, settings(env));
@@ -59,6 +64,27 @@ async function route(request, url, cfg) {
     return discover(request, cfg);
   }
   return json({ error: 'not_found', message: 'No such endpoint.' }, 404);
+}
+
+/**
+ * The Quest app's Digital Asset Links, as application/json. Until a certificate
+ * fingerprint is configured the path is like any missing file: the site's 404 page.
+ */
+function assetLinksResponse(request, env) {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return new Response(null, { status: 405, headers: { Allow: 'GET, HEAD' } });
+  }
+  const statements = assetLinks(env);
+  if (!statements) return env.ASSETS.fetch(request);
+  const body = JSON.stringify(statements, null, 2);
+  return new Response(request.method === 'HEAD' ? null : body, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'public, max-age=300',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
 }
 
 async function tokenExchange(request, url, cfg) {

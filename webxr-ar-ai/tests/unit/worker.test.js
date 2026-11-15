@@ -6,7 +6,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const worker = (await import('../../src/worker/index.js')).default;
-const { isAllowedRedirect, memoryBase } = await import('../../src/worker/rules.js');
+const {
+  DEFAULT_QUEST_APP_PACKAGE,
+  assetLinks,
+  isAllowedRedirect,
+  memoryBase,
+  parseCertFingerprints,
+} = await import('../../src/worker/rules.js');
 
 const SITE = 'https://meta.ci.computer';
 const PORTAL = 'https://hub.ci.computer';
@@ -263,5 +269,98 @@ describe('redirect and memory address rules', () => {
     expect(memoryBase('https://user:pw@memory.example.com')).toBeNull();
     expect(memoryBase('https://memory.example.com/?token=1')).toBeNull();
     expect(memoryBase('javascript:alert(1)')).toBeNull();
+  });
+});
+
+// A made-up certificate digest: 32 bytes, as keytool prints them.
+const CERT = 'AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89';
+const CERT_HEX = CERT.replace(/:/g, '').toLowerCase();
+
+describe('GET /.well-known/assetlinks.json', () => {
+  const linked = { ...env, QUEST_APP_CERT_SHA256: CERT };
+
+  it('lets the Quest app, signed by the configured certificate, open this site', async () => {
+    const res = await worker.fetch(new Request(`${SITE}/.well-known/assetlinks.json`), linked);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toBe('application/json');
+    expect(await res.json()).toEqual([
+      {
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: {
+          namespace: 'android_app',
+          package_name: DEFAULT_QUEST_APP_PACKAGE,
+          sha256_cert_fingerprints: [CERT],
+        },
+      },
+    ]);
+    expect(env.ASSETS.fetch).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('names the package the Worker is configured with', async () => {
+    const res = await worker.fetch(
+      new Request(`${SITE}/.well-known/assetlinks.json`),
+      { ...linked, QUEST_APP_PACKAGE: 'computer.ci.example' },
+    );
+    expect((await res.json())[0].target.package_name).toBe('computer.ci.example');
+  });
+
+  it('answers HEAD without a body', async () => {
+    const res = await worker.fetch(new Request(`${SITE}/.well-known/assetlinks.json`, { method: 'HEAD' }), linked);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe('');
+  });
+
+  it('is the site 404 until a fingerprint is configured', async () => {
+    const res = await call('/.well-known/assetlinks.json');
+    expect(env.ASSETS.fetch).toHaveBeenCalledTimes(1);
+    expect(await res.text()).toBe('static asset');
+  });
+
+  it('serves nothing for a malformed fingerprint or package', async () => {
+    for (const bad of [
+      { ...env, QUEST_APP_CERT_SHA256: 'AB:CD' },
+      { ...env, QUEST_APP_CERT_SHA256: CERT, QUEST_APP_PACKAGE: 'not a package' },
+    ]) {
+      env.ASSETS.fetch.mockClear();
+      await worker.fetch(new Request(`${SITE}/.well-known/assetlinks.json`), bad);
+      expect(env.ASSETS.fetch).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('refuses other methods', async () => {
+    const res = await worker.fetch(new Request(`${SITE}/.well-known/assetlinks.json`, { method: 'POST' }), linked);
+    expect(res.status).toBe(405);
+    expect(res.headers.get('allow')).toBe('GET, HEAD');
+  });
+});
+
+describe('certificate fingerprints', () => {
+  it('accepts the keytool form in either case, and bare hex', () => {
+    expect(parseCertFingerprints(CERT)).toEqual([CERT]);
+    expect(parseCertFingerprints(CERT.toLowerCase())).toEqual([CERT]);
+    expect(parseCertFingerprints(CERT_HEX)).toEqual([CERT]);
+  });
+
+  it('takes several, separated by commas or spaces, without duplicates', () => {
+    const other = '01'.repeat(32);
+    expect(parseCertFingerprints(`${CERT}, ${other}
+${CERT_HEX}`)).toEqual([
+      CERT,
+      '01:'.repeat(31) + '01',
+    ]);
+  });
+
+  it('is empty when nothing is set, and null when any entry is malformed', () => {
+    expect(parseCertFingerprints('')).toEqual([]);
+    expect(parseCertFingerprints(undefined)).toEqual([]);
+    expect(parseCertFingerprints(`${CERT},AB:CD`)).toBeNull();
+    expect(parseCertFingerprints('g'.repeat(64))).toBeNull();
+    expect(parseCertFingerprints('ABC:D'.repeat(16))).toBeNull();
+  });
+
+  it('builds no statement without a fingerprint', () => {
+    expect(assetLinks({})).toBeNull();
+    expect(assetLinks({ QUEST_APP_CERT_SHA256: CERT })[0].target.package_name).toBe(DEFAULT_QUEST_APP_PACKAGE);
   });
 });
