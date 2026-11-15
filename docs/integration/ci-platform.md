@@ -43,36 +43,42 @@ Once a session exists, the app calls `POST /api/discover` with the tokens, witho
 3. The overlay shows each server with its models. The user taps **Use** on one to choose it.
    The choice is kept in the browser, and signing out forgets it.
 
-## Owner actions (not done yet)
+## Owner actions (open pull requests)
 
-These changes are in other repositories. Until they land, sign-in and discovery cannot
-complete. Scene capture still works.
+These changes are in other repositories. Until they are merged and deployed, sign-in and
+discovery cannot complete. Scene capture still works.
 
-### CI-Portal
+### CI-Portal: companionintelligence/CI-Portal#1019
 
 1. Register `ci-meta` as a public client in `PUBLIC_CLIENTS`:
    `{ clientId: 'ci-meta', name: 'Companion Scan Quest' }`.
 2. Allow its redirect in `FIXED_PUBLIC_REDIRECTS`:
-   `'ci-meta': ['https://meta.ci.computer/']`. The entry for `ci-er-connect` is the existing
-   example of this pattern.
-3. Optional, for local development: add the origin the Vite dev server uses (for example
-   `https://127.0.0.1:8081/`) to the same entry. The Worker accepts a loopback redirect only
-   on the root path. The Portal enforces its own list.
+   `'ci-meta': ['https://meta.ci.computer/']`, the pattern `ci-er-connect` and
+   `companion-atlas` use. The pull request also adds the name the consent screen shows.
+3. Local development needs no entry: the Portal admits loopback redirects for any public
+   client. The Worker accepts a loopback redirect only on the root path.
 
-### CI-Server
+Then promote `dev` to `staging` and `main`.
 
-4. Add `ci-meta` to `auth.portal.audience` on each memory server. Without it, the memory
-   server treats the app as an unknown client, which gets capture rights only.
+### Companion Memory (CI-Server): companionintelligence/Companion-Memory#3527
 
-After the changes land, sign in on `https://meta.ci.computer/`, press **Find my servers
-again**, and check that the server and its models appear.
+4. Accept `ci-meta` in `auth.portal.audience` and list it in `auth.portal.captureClients`.
+   The Portal stamps every id_token, and a memory server refuses a stamped token addressed to
+   no appliance unless its client is a capture client. A memory server that sets
+   `PORTAL_OIDC_AUDIENCE` or `PORTAL_OIDC_CAPTURE_CLIENTS` itself needs `ci-meta` in both.
+
+A capture client's token gets the `capture` scope only, so `GET /api/llm/models` stays
+closed to the app (403). After both changes are deployed, sign in on
+`https://meta.ci.computer/` and press **Find my servers again**: each server's health
+shows, but its model list reads as unavailable until Companion Memory opens that route to
+app tokens.
 
 ## Local development
 
 - `npm run dev` serves the app over https on port 8081.
 - `npm run dev:worker` serves the Worker on port 8787. Vite forwards `/api/*` there;
   `WORKER_URL` changes the target.
-- Sign-in in development also needs step 3 above, because the redirect is the dev origin.
+- Sign-in in development works once step 1 has landed: the Portal admits the loopback redirect.
 
 ## Security notes
 
