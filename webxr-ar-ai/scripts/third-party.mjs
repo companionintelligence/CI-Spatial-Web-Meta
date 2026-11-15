@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 /**
  * Writes the third-party notices from package-lock.json:
  *
