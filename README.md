@@ -417,27 +417,67 @@ backend, isn't part of this deploy — it stays wherever it already runs;
 point the deployed frontend at it as described above. Without a server the
 site still works in scene-only mode.)
 
+### Usually: Cloudflare Workers Builds
+
+Once the repository is connected, Cloudflare builds and deploys the Worker itself whenever
+`main` changes under `webxr-ar-ai/`. It creates its own deploy token, so GitHub holds no Cloudflare secrets,
+and builds use Cloudflare's build minutes, not GitHub Actions. Cloudflare's GitHub app is
+already installed on the organization. To connect the repository once, open
+[Workers & Pages](https://dash.cloudflare.com/?to=/:account/workers-and-pages), then
+`ci-webxr-meta` → **Settings** → **Builds** → **Connect** → GitHub →
+`companionintelligence/CI-Spatial-Web-Meta`, branch `main`:
+
+| Setting | Value |
+| --- | --- |
+| Root directory | `webxr-ar-ai` |
+| Build command | `npm run build` (Workers Builds installs the dependencies from `package-lock.json` first) |
+| Deploy command | `npx wrangler deploy` |
+| Build variables and secrets | `NODE_AUTH_TOKEN`, as a secret: a [classic personal access token](https://github.com/settings/tokens/new?scopes=read:packages&description=Cloudflare%20build%20ci-webxr-meta) with only `read:packages` |
+| API token | Cloudflare's default |
+| [Build watch paths](https://developers.cloudflare.com/workers/ci-cd/builds/build-watch-paths/) | Include `webxr-ar-ai/*`, so commits that change only docs or `quest/` do not redeploy |
+| Non-production branch builds | Off |
+
+The token is there because the install reads `@companionintelligence/fonts`, `tokens`,
+`assets`, `config` and `content` from GitHub Packages (`webxr-ar-ai/.npmrc`), and GitHub's
+package registry accepts only classic tokens. The packages' **Manage Actions access**
+grant covers GitHub Actions, not Cloudflare's builder. The Worker's name in the dashboard
+must stay `ci-webxr-meta`, the `name` in `wrangler.toml`. The optional build variables from
+`.env.example` go in the same list if you want them in the build.
+
+To deploy without a new commit, create a
+[Deploy Hook](https://developers.cloudflare.com/workers/ci-cd/builds/deploy-hooks/) under
+**Settings** → **Builds** and send it a POST request. If a build stops with "package.json
+and package-lock.json are out of sync", the lockfile was written by a newer npm than the
+build image has: set `"packageManager": "npm@<version>"` in `webxr-ar-ai/package.json`,
+with the version `npm -v` prints on the machine that wrote the lockfile. After a deploy,
+check that `/`, `/api/health`, `/manifest.webmanifest` and `/licenses.txt` answer.
+
+### By hand, from your machine
+
 ```bash
 cd webxr-ar-ai
-npx wrangler login    # once per machine
-npm run deploy         # vite build && wrangler deploy
+gh auth refresh -s read:packages             # once, so npm ci can read the org's packages
+export NODE_AUTH_TOKEN="$(gh auth token)"
+npm ci
+npx wrangler login                           # once per machine
+npm run deploy                               # vite build && wrangler deploy
 ```
 
-Or trigger it from CI — automatic deploys are gated the same way as
-[`ci.yml`](docs/CI.md), so `deploy.yml` only runs on demand:
+### From GitHub Actions
+
+`deploy.yml` does the same from GitHub. Automatic workflow runs are gated off here
+([docs/CI.md](docs/CI.md)), so it runs only when started:
 
 ```bash
 gh workflow run deploy.yml --repo companionintelligence/CI-Spatial-Web-Meta --ref main
 ```
 
-The workflow needs three things from the owner, set once:
+It needs:
 
-1. **Read access to the org's packages.** `npm ci` (in `deploy.yml` and `ci.yml`) reads
-   `@companionintelligence/fonts`, `tokens`, `assets`, `config` and `content` from GitHub
-   Packages with the run's `GITHUB_TOKEN`. That token can read a package only when the
-   package grants this repository access. For each of the five: the organization's
-   **Packages** tab → the package → **Package settings** → **Manage Actions access** →
-   **Add repository** → `CI-Spatial-Web-Meta`, role **Read**. Without it `npm ci` stops with
+1. **Read access to the org's packages.** `npm ci` (in `deploy.yml` and `ci.yml`) reads the
+   five packages with the run's `GITHUB_TOKEN`, which works only while each package grants
+   this repository access: **Package settings** → **Manage Actions access** →
+   `CI-Spatial-Web-Meta`, role **Read**. All five do. Without it `npm ci` stops with
    `403 permission_denied: read_package`.
 2. **`CLOUDFLARE_API_TOKEN`**, a repository secret (Settings → Secrets and variables →
    Actions → Secrets). In the Cloudflare dashboard: Account API tokens → Create token →

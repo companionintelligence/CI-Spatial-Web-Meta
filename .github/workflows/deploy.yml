@@ -3,6 +3,9 @@ name: Deploy (Cloudflare)
 # Builds webxr-ar-ai and deploys the Worker (webxr-ar-ai/wrangler.toml, name
 # "ci-webxr-meta") that serves it, with its /api routes, at https://meta.ci.computer.
 #
+# The usual deploy is Cloudflare Workers Builds, which deploys on its own when main
+# changes (README, "Deploy"). This workflow is the fallback from GitHub.
+#
 # Requires, none of which this workflow creates (README, "Deploy"):
 #   - read access for this repository to the org's @companionintelligence packages
 #     (fonts, tokens, assets, config, content), granted in each package's settings
