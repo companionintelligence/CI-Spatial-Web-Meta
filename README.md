@@ -159,6 +159,13 @@ The app requests `immersive-ar` automatically (with `plane-detection`, `mesh-det
 
 **Camera calibration:** the passthrough camera's horizontal FOV defaults to 80°. Calibrate it once per headset: set **Camera FOV** on the overlay and Save. The value is kept in that browser's localStorage and applies to the next capture. A `?hfov=<degrees>` URL parameter still overrides it for one-off tests. If pins land short of / past object edges consistently, adjust this value.
 
+### Or install the Quest app
+
+The same site is also packaged as an app for Meta Horizon OS, which opens straight into AR. It is
+built with Meta's Bubblewrap from [`quest/`](quest/) by the manual
+[Quest app workflow](.github/workflows/quest-app.yml). Sideloading, signing and the remaining
+release steps are in [docs/quest-app.md](docs/quest-app.md).
+
 ## Set up: sign in and memory servers
 
 The overlay's **Set up** section is the first-run flow. Scanning works without it.
@@ -247,7 +254,7 @@ webxr-ar-ai/
 ├── vite.config.js
 ├── package.json
 ├── wrangler.toml                     # Cloudflare Worker: static assets on meta.ci.computer
-├── public/                           # Served as-is: _headers (security headers + CSP), favicon.svg, 404.html; brand/ is generated
+├── public/                           # Served as-is: _headers (security headers + CSP), manifest.webmanifest, favicon.svg, 404.html; brand/ is generated
 ├── scripts/
 │   └── sync-brand.mjs                # Copies the logo and icons from the pinned brand package, checks their hashes
 ├── tests/                            # unit/ (Vitest), e2e/ (Playwright), mocks/, harness/
@@ -255,12 +262,15 @@ webxr-ar-ai/
 │   ├── main.js                       # Entry: World.create + system wiring + session lifecycle
 │   ├── notfound.js                   # Not-found page script
 │   ├── worker/
-│   │   └── index.js                  # Cloudflare Worker: static assets and /api (sign-in, discovery)
+│   │   ├── index.js                  # Cloudflare Worker: static assets, /api (sign-in, discovery), assetlinks.json
+│   │   └── rules.js                  # Redirect and memory-address rules; the Quest app's Digital Asset Links
 │   ├── viewer/
 │   │   ├── main.js                   # Viewer page: GLB load, pin rendering, sidebar
 │   │   └── scanParser.js             # Pure extras-parsing helpers
 │   ├── app/
-│   │   └── AppState.js               # Reactive singleton state (incl. status line)
+│   │   ├── AppState.js               # Reactive singleton state (incl. status line)
+│   │   ├── questApp.js               # Quest app launch: the ?source=quest-app marker and when to enter AR
+│   │   └── arSession.js              # Starts the immersive-ar session from the page (Quest app, Enter AR)
 │   ├── spatial/
 │   │   ├── SpatialPin.js             # Pin data class
 │   │   ├── SpatialPinManager.js      # Unified pin store (EventTarget)
@@ -301,6 +311,12 @@ cv-server/
 ├── main.py                           # FastAPI with /v1/* endpoints
 ├── requirements.txt
 └── README.md
+
+quest/                                # The Quest app (docs/quest-app.md)
+├── twa-manifest.json                 # Bubblewrap project: package, immersive mode, launch URL
+├── build.sh                          # Builds the APK and AAB, unsigned
+├── sign.sh                           # Signs both with the release keystore and checks them
+└── package.json                      # Pins Meta's Bubblewrap CLI
 ```
 
 ## Export format

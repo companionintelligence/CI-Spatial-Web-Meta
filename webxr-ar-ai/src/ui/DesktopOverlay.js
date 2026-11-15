@@ -14,6 +14,9 @@
  *     OAuth (button hidden unless the deployment configures an issuer)
  *   - Controller button legend
  *   - Export controls: download the scan GLB locally / open the desktop viewer
+ *   - In the Quest app only: an Enter AR button. The app starts AR by itself on
+ *     launch (src/app/questApp.js); the button brings it back after the user
+ *     leaves AR, or when the launch could not start it.
  *
  * The overlay hides itself while an immersive session is presenting and
  * reappears on session end (where it shows the scan gathered in-headset —
@@ -41,6 +44,7 @@ import {
   getSession,
 } from '../net/PortalSession.js';
 import { firstRunStatus, FTUE_STEP } from '../net/ftueModel.js';
+import { describeArError } from '../app/questApp.js';
 
 const HEALTH_POLL_MS = 8000;
 const HEALTH_MAX_OFFLINE_MS = 60_000;
@@ -138,6 +142,9 @@ const STYLE = `
 #co-overlay .co-ftue-title { font-weight: 600; margin-bottom: 2px; }
 #co-overlay .co-ftue-actions { flex-wrap: wrap; }
 #co-overlay .co-ftue-actions button:disabled { opacity: 0.6; cursor: progress; }
+#co-overlay #co-enter-ar { margin-bottom: 0; }
+#co-overlay #co-enter-ar:disabled { opacity: 0.6; cursor: progress; }
+#co-enter-ar-note { margin-bottom: 8px; }
 `;
 
 export class DesktopOverlay {
@@ -149,13 +156,16 @@ export class DesktopOverlay {
    * @param {() => void} [deps.onClear]  clears pins, geometry snapshots, and storage
    * @param {typeof import('../net/ServerConnection.js')} [deps.connection]
    *   server URL + OAuth helpers; the Server section is omitted without it
+   * @param {() => Promise<unknown>} [deps.onEnterAr]  starts the AR session; the Enter AR
+   *   button is shown only with it (the Quest app, which has no browser Enter AR)
    */
-  constructor({ pinManager, cvClient, onDownload, onClear = null, connection = null }) {
+  constructor({ pinManager, cvClient, onDownload, onClear = null, connection = null, onEnterAr = null }) {
     this.pinManager = pinManager;
     this.cvClient   = cvClient;
     this.onDownload = onDownload;
     this.onClear    = onClear;
     this.connection = connection;
+    this.onEnterAr  = onEnterAr;
     this._root       = null;
     this._healthTimer = 0;
     this._healthFailures = 0;
@@ -177,6 +187,10 @@ export class DesktopOverlay {
       <img class="co-lockup co-lockup-dark" src="/brand/lockup-dark.svg" alt="" aria-hidden="true" />
       <h1>Companion Scan Quest</h1>
       <div class="co-sub">Quest 3 world mapper — put on the headset and enter AR</div>
+      <div class="co-row" id="co-enter-ar-row">
+        <button id="co-enter-ar">Enter AR</button>
+      </div>
+      <div id="co-enter-ar-note" class="co-note"></div>
       <div class="co-section co-ftue" id="co-ftue">
         <div class="co-brand">Set up</div>
         <div id="co-ftue-title" class="co-ftue-title"></div>
@@ -241,6 +255,13 @@ export class DesktopOverlay {
     if (this.onClear) clearBtn.addEventListener('click', () => this.onClear());
     else clearBtn.remove();
 
+    if (this.onEnterAr) {
+      this._root.querySelector('#co-enter-ar').addEventListener('click', () => this._enterAr());
+    } else {
+      this._root.querySelector('#co-enter-ar-row').remove();
+      this._root.querySelector('#co-enter-ar-note').remove();
+    }
+
     this._initHeadsetLink();
     this._initConnection();
     this._initCalibration();
@@ -275,7 +296,27 @@ export class DesktopOverlay {
     this._root = null;
   }
 
+  /** Say on the panel why the AR session did not start (the Quest app's launch). */
+  reportArError(err) {
+    this._note('#co-enter-ar-note', describeArError(err), 'error');
+  }
+
   // ── Private ───────────────────────────────────────────────────────────────
+
+  async _enterAr() {
+    const button = this._root?.querySelector('#co-enter-ar');
+    if (!button || button.disabled) return;
+    button.disabled = true;
+    this._note('#co-enter-ar-note', '');
+    try {
+      await this.onEnterAr();
+    } catch (err) {
+      console.warn('[CompanionScan] Enter AR failed:', err);
+      this.reportArError(err);
+    } finally {
+      button.disabled = false;
+    }
+  }
 
   /** The address to type or paste into the Quest Browser: this page, without query or hash. */
   _initHeadsetLink() {

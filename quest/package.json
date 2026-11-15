@@ -1,0 +1,13 @@
+{
+  "name": "companion-scan-quest-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Builds the Companion Scan Quest app (meta.ci.computer for Meta Horizon OS) with Meta's Bubblewrap. See docs/quest-app.md.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "scripts": {
+    "bubblewrap": "bubblewrap"
+  },
+  "devDependencies": {
+    "@meta-quest/bubblewrap-cli": "1.24.1"
+  }
+}
