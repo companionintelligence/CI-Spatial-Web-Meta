@@ -156,8 +156,9 @@ The web app itself is not in the APK. The app opens the site, which serves its o
    ```
 
 2. **Publish its fingerprint.** Put the `SHA256:` value in `QUEST_APP_CERT_SHA256` in
-   `webxr-ar-ai/wrangler.toml`, merge, and deploy the site (README, "Deploy"). Check that
-   `https://meta.ci.computer/.well-known/assetlinks.json` and `/manifest.webmanifest` answer 200.
+   `webxr-ar-ai/wrangler.toml` and merge. Workers Builds deploys the change (README, "Deploy").
+   Check that `https://meta.ci.computer/.well-known/assetlinks.json` and `/manifest.webmanifest`
+   answer 200.
 3. **Add the secrets.** Create the `quest-release` environment (Settings → Environments), add
    required reviewers, and add the secrets above (`base64 -w0 companion-scan-quest.keystore` gives
    `QUEST_KEYSTORE_BASE64`).
