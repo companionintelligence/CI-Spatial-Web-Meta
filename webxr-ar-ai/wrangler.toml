@@ -25,10 +25,11 @@ CI_OAUTH_CLIENT_ID = "ci-meta"
 # The Quest app (quest/twa-manifest.json, docs/quest-app.md). /.well-known/assetlinks.json
 # names this package and the SHA-256 fingerprint of the certificate that signs it; Horizon
 # OS will not launch the immersive app without that match. The fingerprint is public (it is
-# in every copy of the APK). Leave it empty until the release keystore exists: the file is
-# then a 404. Several fingerprints may be listed, separated by commas.
+# in every copy of the APK). This is the release keystore's certificate (alias "android",
+# created 2026-11-14). Every update must be signed with that same key, so this value never
+# changes. Empty, the file is a 404. Several fingerprints may be listed, separated by commas.
 QUEST_APP_PACKAGE = "computer.ci.meta.twa"
-QUEST_APP_CERT_SHA256 = ""
+QUEST_APP_CERT_SHA256 = "64:A5:BF:8B:A4:C3:75:28:7C:E5:07:0C:D2:57:93:AA:E1:7A:CD:1E:41:7E:DA:BE:1D:4B:AD:EE:32:0A:14:5E"
 
 # Production hostname. The `ci.computer` zone must be active on this Cloudflare
 # account. webxr.ci.computer was wired earlier as well; it is left out until the
