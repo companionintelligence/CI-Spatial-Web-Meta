@@ -22,7 +22,7 @@ import {
   createSystem,
 } from '@iwsdk/core';
 
-import { appState }                  from './app/AppState.js';
+import { appState, ModelPreset }     from './app/AppState.js';
 import * as connection               from './net/ServerConnection.js';
 import { SpatialPin }                from './spatial/SpatialPin.js';
 import { SpatialPinManager }         from './spatial/SpatialPinManager.js';
@@ -31,7 +31,7 @@ import { ScanStorage }               from './spatial/ScanStorage.js';
 import { GeometryStore }             from './spatial/GeometryStore.js';
 import { CvServerClient }            from './cv/CvServerClient.js';
 import { PipelineB }                 from './pipeline/PipelineB.js';
-import { runPipelineA }              from './pipeline/PipelineA.js';
+import { runPipelineA, trackIdFor } from './pipeline/PipelineA.js';
 import { collectRaycastTargets }     from './pipeline/SceneRaycaster.js';
 import { CameraViewfinder }          from './rendering/CameraViewfinder.js';
 import { SpatialLabel3DRenderer }    from './rendering/SpatialLabel3DRenderer.js';
@@ -43,6 +43,8 @@ import { DesktopOverlay }            from './ui/DesktopOverlay.js';
 import { SceneGeometrySnapshot }     from './export/SceneGeometrySnapshot.js';
 import { GltfSyncClient }            from './export/GltfSyncClient.js';
 import { downloadGlb }               from './export/GltfDownload.js';
+import { LocalScanClient }           from './scan/LocalScanClient.js';
+import { planeRecords, planesSignature } from './scan/planes.js';
 import { initColorScheme }           from './ui/theme.js';
 import { finishSignIn }              from './net/PortalSession.js';
 import { detectQuestApp, shouldEnterArOnLoad } from './app/questApp.js';
@@ -110,6 +112,12 @@ const cvClient    = new CvServerClient({
   baseUrl:       connection.getServerUrl(),
   getAuthHeader: connection.getAuthHeader,
 });
+// The local scan API (keyframes + planes). Read the server URL at each request, so an
+// edit on the overlay applies at once. Refuses any non-local host (src/net/localOnly.js).
+const localScan   = new LocalScanClient({
+  getBaseUrl:    () => connection.getServerUrl(),
+  getAuthHeader: connection.getAuthHeader,
+});
 const scanRoot    = new ScanAnchorRoot(world);
 const scanStorage = new ScanStorage();
 const geometryStore = new GeometryStore();
@@ -133,6 +141,7 @@ const desktopOverlay = new DesktopOverlay({
   onDownload: () => downloadGlb(scanRoot, pinManager),
   onClear:    clearScan,
   onEnterAr:  questApp ? () => startArSession(world) : null,
+  onToggleCamera: () => world.getSystem(CompanionScanSystem)?.toggleCamera(),
 });
 desktopOverlay.init(world);
 if (linkSettings.serverSet) {
@@ -150,9 +159,12 @@ cvClient.models()
 window.__companionScan = {
   pinManager, appState, scanRoot, scanStorage, clearScan, SpatialPin,
   geometryStore,
+  localScan,
   flushGeometry: () => geometryStore.flush(),
   questApp,
   exitAr: () => world.exitXR(),
+  /** Camera opt-in for this session (off by default). Returns the state now in force. */
+  setCameraOn: (on) => world.getSystem(CompanionScanSystem)?.setCamera(on) ?? false,
 };
 
 // ── CompanionScanSystem ────────────────────────────────────────────────────
@@ -174,8 +186,10 @@ class CompanionScanSystem extends createSystem({
     this._roomCaptureChecked = false;
 
     // ── Services ─────────────────────────────────────────────────────────
-    this._pipelineB     = new PipelineB(this.world, pinManager, cvClient);
-    this._cameraEntity  = this._pipelineB.initCameraEntity();
+    this._pipelineB     = new PipelineB(this.world, pinManager, cvClient, localScan);
+    this._cameraEntity  = this._pipelineB.initCameraEntity();   // the camera stays off until opted in
+    this._planesSig     = '';
+    this._planesAt      = 0;
     this._viewfinder    = new CameraViewfinder(this.world);
     this._labelRenderer = new SpatialLabel3DRenderer(this.world, pinManager, scanRoot);
     this._frustum       = new FrustumRenderer(this.world);
@@ -209,8 +223,9 @@ class CompanionScanSystem extends createSystem({
     const inputSys = this.world.getSystem(ControllerInputSystem);
     if (inputSys) {
       inputSys.setHandlers({
-        capture: () => this._doCapture(),
-        export:  () => this._doExport(),
+        capture:      () => this._doCapture(),
+        export:       () => this._doExport(),
+        toggleCamera: () => this.toggleCamera(),
       });
     }
 
@@ -222,8 +237,9 @@ class CompanionScanSystem extends createSystem({
     });
 
     this.renderer.xr.addEventListener('sessionend', () => {
-      // CameraSystem stops the camera itself (visibilityState subscription);
-      // release the viewfinder's binding to the now-dead video element.
+      // The camera is opt-in per session: leaving AR turns it off, so it is not
+      // restarted when the headset comes back. The viewfinder then drops its binding.
+      this.setCamera(false);
       this._viewfinder.unbind();
       this._hudReady  = false;
       this._menuReady = false;
@@ -256,7 +272,53 @@ class CompanionScanSystem extends createSystem({
     this._viewfinder.update();
     this._labelRenderer.update();
     this._frustum.update();
+    this._refreshPlanes();
     this._wristHUD.update();
+  }
+
+  // ── Camera opt-in and the room's planes ───────────────────────────────────
+
+  /**
+   * Turn the camera on or off for this session. The Left stick and the overlay both
+   * come here. Returns the state now in force.
+   * @param {boolean} on
+   */
+  setCamera(on) {
+    const now = this._pipelineB.setCameraOn(on);
+    appState.setCameraOn(now);
+    if (now) {
+      appState.setStatus('Camera on: frames go only to the local scan server', 'warn');
+    } else {
+      appState.setStatus('Camera off', 'info');
+    }
+    return now;
+  }
+
+  /** The Left stick: flip the camera on or off. */
+  toggleCamera() {
+    return this.setCamera(!appState.cameraOn);
+  }
+
+  /**
+   * The room's planes, refreshed about once a second. The list only changes the
+   * headset and the overlay when a plane appears, moves or resizes.
+   * @param {boolean} [force]
+   * @returns {Array<object>} the current contract Plane records
+   */
+  _refreshPlanes(force = false) {
+    const now = Date.now();
+    if (!force && now - this._planesAt < 1000) return appState.planes;
+    this._planesAt = now;
+    const records = planeRecords(this.queries.planeEntities.entities, {
+      readPlane: (entity) => entity.getValue(XRPlane, '_plane'),
+      trackIdFor: (plane) => trackIdFor(plane, 'plane'),
+    });
+    const signature = planesSignature(records);
+    if (signature !== this._planesSig) {
+      this._planesSig = signature;
+      appState.setPlanes(records);
+    }
+    return records;
   }
 
   // ── Quest session tuning ──────────────────────────────────────────────────
@@ -326,9 +388,10 @@ class CompanionScanSystem extends createSystem({
       // Pipeline A — XR Scene Understanding planes + meshes
       runPipelineA(planeEntities, meshEntities, pinManager, captureId, appState.captureSessionId);
 
-      // Pipeline B — camera → CV server → local raycast against scene geometry
+      // Pipeline B — camera (only if opted in) → local scan / CV server → local raycast
+      const planes  = this._refreshPlanes(true);
       const targets = collectRaycastTargets(planeEntities, meshEntities);
-      const { pins, rays, error } = await this._pipelineB.capture(captureId, targets);
+      const { pins, rays, error, skipped } = await this._pipelineB.capture(captureId, targets, { planes });
 
       // Frustum visualisation (rays already originate from the capture pose)
       if (appState.previewDistance > 0 && rays.length) {
@@ -344,11 +407,18 @@ class CompanionScanSystem extends createSystem({
       const scenePins = pinManager
         .bySource('MetaScene')
         .filter(p => p.captureId === captureId).length;
-      if (error) {
+      if (skipped === 'camera-off') {
+        // Off means nothing was read or sent: the scene pins are a partial result.
+        appState.setStatus(`Camera off · ${scenePins} scene pins`, 'warn');
+      } else if (error) {
         // Scene pins are placed without the CV server, so a CV failure is a
         // partial result (warning), not a failed capture.
         appState.setStatus(`${error} · ${scenePins} scene pins`, 'warn');
       } else {
+        const scan = this._pipelineB.lastScan;
+        if (appState.modelPreset === ModelPreset.Local && scan?.scanId) {
+          appState.setScan({ id: scan.scanId, detections: pins.length });
+        }
         appState.setStatus(`${pins.length} detections · ${scenePins} scene pins`, 'ok');
       }
 

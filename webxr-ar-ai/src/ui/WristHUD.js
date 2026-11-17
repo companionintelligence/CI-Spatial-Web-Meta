@@ -2,10 +2,13 @@
  * WristHUD — small world-space status panel attached to the left controller wrist.
  *
  * Displays:
- *   Model:   Florence | GDino | SAM2
+ *   Room:    the room name the next scan is filed under
+ *   Camera:  OFF, or a red REC line while the camera is on (privacy indicator)
+ *   Model:   Local | Florence | GDino | SAM2
  *   Display: BoundingBox2D | SpatialLabel3D | Both
  *   Preview: Near (1m) | Far (3m) | Off
  *   Pins:    <cv> cv · <scene> scene
+ *   Planes:  the room's planes, largest first (up to three, then "+N more")
  *   status line (capture/export results, errors)  — or BUSY… while capturing
  *
  * Attached to world.input.xrOrigin.gripSpaces.left.
@@ -15,11 +18,16 @@ import * as THREE from 'three';
 import { appState } from '../app/AppState.js';
 import { PinSource } from '../spatial/SpatialPin.js';
 import { FONT_STACK, XR_SCHEME, canonColor, withAlpha } from './theme.js';
+import { recordingIndicator } from '../privacy/capturePolicy.js';
+import { summarisePlanes } from '../scan/planes.js';
+import { currentHierarchy } from '../scan/hierarchy.js';
 
 const HUD_WIDTH  = 0.14;   // metres
-const HUD_HEIGHT = 0.10;   // metres
 const CANVAS_W   = 420;
-const CANVAS_H   = 300;
+const CANVAS_H   = 420;
+const HUD_HEIGHT = HUD_WIDTH * CANVAS_H / CANVAS_W;
+const PLANE_ROWS = 3;
+const STATUS_MAX = 30;
 
 /** Status line colour, from the canon's dark set (the HUD sits on passthrough). */
 function statusColor(level) {
@@ -78,7 +86,7 @@ export class WristHUD {
     this._mesh = new THREE.Mesh(new THREE.PlaneGeometry(HUD_WIDTH, HUD_HEIGHT), mat);
 
     // Position on wrist (palm-facing, slightly above grip)
-    this._mesh.position.set(0, 0.04, -0.02);
+    this._mesh.position.set(0, 0.05, -0.02);
     this._mesh.rotation.x = -0.6;   // tilt toward viewer
     this._mesh.renderOrder = 10;
 
@@ -116,8 +124,10 @@ export class WristHUD {
     ctx.roundRect(1, 1, W - 2, H - 2, 15);
     ctx.stroke();
 
-    // Text rows
+    const indicator = recordingIndicator({ cameraOn: appState.cameraOn });
     const rows = [
+      { label: 'Room:',    value: currentHierarchy().room.name },
+      { label: 'Camera:',  value: indicator.text, level: indicator.level },
       { label: 'Model:',   value: appState.modelPreset },
       { label: 'Display:', value: appState.displayMode },
       { label: 'Preview:', value: appState.previewDistanceLabel() },
@@ -125,25 +135,46 @@ export class WristHUD {
     ];
 
     ctx.font      = `700 28px ${FONT_STACK}`;
-    const lineH   = 52;
-    const startY  = 44;
-    rows.forEach(({ label, value }, i) => {
+    const lineH   = 38;
+    const startY  = 42;
+    rows.forEach(({ label, value, level }, i) => {
       const y = startY + i * lineH;
       ctx.fillStyle = canonColor('muted-foreground', XR_SCHEME);
       ctx.fillText(label, 16, y);
-      ctx.fillStyle = canonColor('foreground', XR_SCHEME);
-      ctx.fillText(value, 160, y);
+      ctx.fillStyle = level === 'alert'
+        ? canonColor('destructive', XR_SCHEME)
+        : canonColor('foreground', XR_SCHEME);
+      ctx.fillText(_truncate(value, 26), 160, y);
     });
+
+    // The room's planes, largest first
+    const planes = summarisePlanes(appState.planes, PLANE_ROWS);
+    const hidden = Math.max(0, appState.planes.length - planes.length);
+    let y = startY + rows.length * lineH + 10;
+    ctx.fillStyle = canonColor('muted-foreground', XR_SCHEME);
+    ctx.font      = `700 22px ${FONT_STACK}`;
+    ctx.fillText(`Planes: ${appState.planes.length}`, 16, y);
+    ctx.fillStyle = canonColor('foreground', XR_SCHEME);
+    ctx.font      = `500 21px ${FONT_STACK}`;
+    planes.forEach((plane) => {
+      y += 24;
+      ctx.fillText(_truncate(plane.text, 34), 24, y);
+    });
+    if (hidden > 0) {
+      y += 24;
+      ctx.fillStyle = canonColor('muted-foreground', XR_SCHEME);
+      ctx.fillText(`+${hidden} more`, 24, y);
+    }
 
     // Bottom line: BUSY indicator wins over the status message
     if (appState.isBusy) {
       ctx.fillStyle = canonColor('warning', XR_SCHEME);
-      ctx.font      = `700 30px ${FONT_STACK}`;
-      ctx.fillText('BUSY…', 16, H - 20);
+      ctx.font      = `700 28px ${FONT_STACK}`;
+      ctx.fillText('BUSY…', 16, H - 18);
     } else if (appState.status.text) {
       ctx.fillStyle = statusColor(appState.status.level);
       ctx.font      = `700 24px ${FONT_STACK}`;
-      ctx.fillText(_truncate(appState.status.text, 30), 16, H - 20);
+      ctx.fillText(_truncate(appState.status.text, STATUS_MAX), 16, H - 18);
     }
 
     if (this._tex) this._tex.needsUpdate = true;
@@ -158,5 +189,6 @@ export class WristHUD {
 }
 
 function _truncate(text, max) {
-  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+  const value = String(text ?? '');
+  return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }

@@ -45,6 +45,9 @@ import {
 } from '../net/PortalSession.js';
 import { firstRunStatus, FTUE_STEP } from '../net/ftueModel.js';
 import { describeArError } from '../app/questApp.js';
+import { cameraToggleLabel, recordingIndicator } from '../privacy/capturePolicy.js';
+import { loadRoomName, saveRoomName } from '../scan/hierarchy.js';
+import { summarisePlanes } from '../scan/planes.js';
 
 const HEALTH_POLL_MS = 8000;
 const HEALTH_MAX_OFFLINE_MS = 60_000;
@@ -66,6 +69,7 @@ const LEGEND = [
   ['Right B',  'Cycle CV model (from the server registry)'],
   ['Left X',   'Preview distance — 1 m → 3 m → Off'],
   ['Left Y',   'Save & Export (download + upload)'],
+  ['Left stick', 'Camera on or off (off at the start of each session)'],
   ['Trigger',  'Display mode — BBox2D → Label3D → Both'],
 ];
 
@@ -161,13 +165,14 @@ export class DesktopOverlay {
    * @param {() => Promise<unknown>} [deps.onEnterAr]  starts the AR session; the Enter AR
    *   button is shown only with it (the Quest app, which has no browser Enter AR)
    */
-  constructor({ pinManager, cvClient, onDownload, onClear = null, connection = null, onEnterAr = null }) {
+  constructor({ pinManager, cvClient, onDownload, onClear = null, connection = null, onEnterAr = null, onToggleCamera = null }) {
     this.pinManager = pinManager;
     this.cvClient   = cvClient;
     this.onDownload = onDownload;
     this.onClear    = onClear;
     this.connection = connection;
     this.onEnterAr  = onEnterAr;
+    this.onToggleCamera = onToggleCamera;
     this._root       = null;
     this._healthTimer = 0;
     this._healthFailures = 0;
@@ -189,6 +194,7 @@ export class DesktopOverlay {
       <img class="co-lockup co-lockup-dark" src="/brand/lockup-dark.svg" alt="" aria-hidden="true" />
       <h1>Companion Scan Quest</h1>
       <div class="co-sub">Quest 3 world mapper — put on the headset and enter AR</div>
+      <div id="co-rec" class="co-badge error" hidden></div>
       <div class="co-row" id="co-enter-ar-row">
         <button id="co-enter-ar">Enter AR</button>
       </div>
@@ -236,6 +242,26 @@ export class DesktopOverlay {
         </div>
         <div id="co-hfov-note" class="co-note"></div>
       </div>
+      <div class="co-section" id="co-camera-section">
+        <div class="co-brand">Camera</div>
+        <div class="co-row">
+          <span id="co-camera-state" class="co-badge info">Camera off</span>
+          <button id="co-camera-toggle">Turn camera on</button>
+        </div>
+        <div class="co-note">Off until you turn it on. While it is on, frames go only to the local scan server and the headset shows a red REC line. The Left stick also toggles it in the headset.</div>
+      </div>
+      <div class="co-section" id="co-room-section">
+        <div class="co-brand">Room</div>
+        <div class="co-row">
+          <label class="co-label" for="co-room">Name</label>
+          <input id="co-room" type="text" maxlength="120" aria-label="Room name" />
+          <button id="co-room-save">Save</button>
+        </div>
+        <div id="co-room-note" class="co-note"></div>
+        <div id="co-scan" class="co-note"></div>
+        <div class="co-brand">Planes</div>
+        <ul id="co-planes" class="co-note" style="margin: 0; padding-left: 18px;"></ul>
+      </div>
       <div class="co-section">
         <table>${LEGEND.map(([k, v]) => `<tr><td class="co-key">${k}</td><td>${v}</td></tr>`).join('')}</table>
       </div>
@@ -269,6 +295,8 @@ export class DesktopOverlay {
     this._initConnection();
     this._initCalibration();
     this._initFirstRun();
+    this._initCamera();
+    this._initRoom();
 
     // ── Live data ─────────────────────────────────────────────────────────
     const refreshPins = () => this._refreshPins();
@@ -278,8 +306,14 @@ export class DesktopOverlay {
 
     appState.subscribe((field) => {
       if (field === 'status') this._refreshStatus();
+      if (field === 'cameraOn') this._refreshCamera();
+      if (field === 'planes') this._refreshPlanes();
+      if (field === 'scan') this._refreshScan();
     });
 
+    this._refreshCamera();
+    this._refreshPlanes();
+    this._refreshScan();
     this._checkXrSupport();
     this._checkHealth();
 
@@ -570,6 +604,78 @@ export class DesktopOverlay {
     // One pending check at a time: a manual check (after Save) reschedules too.
     clearTimeout(this._healthTimer);
     this._healthTimer = setTimeout(() => this._checkHealth(), healthDelayMs(this._healthFailures));
+  }
+
+  // ── Camera, room and planes ───────────────────────────────────────────────
+
+  _initCamera() {
+    const section = this._root.querySelector('#co-camera-section');
+    if (!this.onToggleCamera) {
+      section.remove();
+      return;
+    }
+    this._root.querySelector('#co-camera-toggle').addEventListener('click', () => this.onToggleCamera());
+  }
+
+  _refreshCamera() {
+    if (!this._root) return;
+    const indicator = recordingIndicator({
+      cameraOn: appState.cameraOn,
+      destination: globalThis.location?.host ?? '',
+    });
+    const state = this._root.querySelector('#co-camera-state');
+    if (state) {
+      state.textContent = indicator.text;
+      state.className = `co-badge ${indicator.active ? 'error' : 'info'}`;
+    }
+    const toggle = this._root.querySelector('#co-camera-toggle');
+    if (toggle) toggle.textContent = cameraToggleLabel(appState.cameraOn);
+    const rec = this._root.querySelector('#co-rec');
+    if (rec) {
+      rec.hidden = !indicator.active;
+      rec.textContent = indicator.text;
+    }
+  }
+
+  _initRoom() {
+    const input = this._root.querySelector('#co-room');
+    input.value = loadRoomName(getLocalStorage());
+    this._root.querySelector('#co-room-save').addEventListener('click', () => this._saveRoom(input.value));
+  }
+
+  _saveRoom(raw) {
+    try {
+      const name = saveRoomName(raw, getLocalStorage());
+      this._root.querySelector('#co-room').value = name;
+      this._note('#co-room-note', `Saved. The next scan is filed under "${name}".`, 'ok');
+    } catch (err) {
+      this._note('#co-room-note', err.message, 'error');
+    }
+  }
+
+  /** The room's planes, largest first. Names are set with textContent, never as HTML. */
+  _refreshPlanes() {
+    const list = this._root?.querySelector('#co-planes');
+    if (!list) return;
+    const rows = summarisePlanes(appState.planes, 8);
+    const more = appState.planes.length - rows.length;
+    const items = rows.length
+      ? rows.map((row) => row.text)
+      : ['No planes yet. They appear once the headset has scanned the room.'];
+    if (more > 0) items.push(`+${more} more`);
+    list.replaceChildren(...items.map((text) => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      return li;
+    }));
+  }
+
+  _refreshScan() {
+    const el = this._root?.querySelector('#co-scan');
+    if (!el) return;
+    el.textContent = appState.scan
+      ? `Last scan ${appState.scan.id} · ${appState.scan.detections} detections`
+      : 'No scan yet. Turn the camera on, then press Right A to capture a keyframe.';
   }
 
   _refreshPins() {

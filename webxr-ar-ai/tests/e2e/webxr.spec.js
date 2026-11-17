@@ -11,6 +11,7 @@
  * State is read via window.__state which is exposed by a Playwright initScript.
  */
 import { test, expect } from '@playwright/test';
+import { installFakeCamera } from './helpers/fakeCamera.js';
 import {
   installIwer,
   grantXrSession,
@@ -194,6 +195,7 @@ test.describe('Controller input — button mapping', () => {
 test.describe('Capture pipeline — CV server integration', () => {
   test.beforeEach(async ({ page }) => {
     await installIwer(page);
+    await installFakeCamera(page);
     // Pre-stub all CV routes to prevent unhandled fetch errors
     await page.route('/v1/**', async (route) => {
       await route.fulfill({
@@ -225,9 +227,13 @@ test.describe('Capture pipeline — CV server integration', () => {
       });
     });
 
-    // Press B to cycle to GDino (from Florence → GDino)
+    // The camera is opted in for this test. The local scan is the default preset, so two
+    // presses of B reach GDino (Local → Florence → GDino).
+    await page.evaluate(() => window.__companionScan.setCameraOn(true));
+    await page.waitForTimeout(1500);
     await pressButton(page, 'right', 'b-button');
-    await page.waitForTimeout(100);
+    await pressButton(page, 'right', 'b-button');
+    expect(await page.evaluate(() => window.__companionScan.appState.modelPreset)).toBe('GDino');
 
     // Press A to capture
     await pressButton(page, 'right', 'a-button');
@@ -240,11 +246,10 @@ test.describe('Capture pipeline — CV server integration', () => {
 
     await page.waitForTimeout(500);
 
-    // If a detect call was made, validate it had required fields
-    if (detectBody) {
-      expect(detectBody).toHaveProperty('image');
-      expect(detectBody).toHaveProperty('prompt');
-    }
+    // The detect call must have been made, and it must carry the frame and the prompt.
+    await expect.poll(() => detectBody !== undefined, { timeout: 15_000 }).toBe(true);
+    expect(detectBody).toHaveProperty('image');
+    expect(detectBody).toHaveProperty('prompt');
     // No errors
     const errors = await page.evaluate(() => window.__jsErrors ?? []);
     expect(errors).toHaveLength(0);
@@ -264,9 +269,14 @@ test.describe('Capture pipeline — CV server integration', () => {
       });
     });
 
-    // Florence is the default preset — press A directly
+    // The local scan is the default preset; one press of B makes Florence the preset.
+    // The camera is opted in, so A runs the Florence caption and object calls.
+    await page.evaluate(() => window.__companionScan.setCameraOn(true));
+    await page.waitForTimeout(1500);
+    await pressButton(page, 'right', 'b-button');
     await pressButton(page, 'right', 'a-button');
-    await page.waitForTimeout(500);
+    await expect.poll(() => florenceCalls.length, { timeout: 15_000 }).toBe(2);
+    expect(florenceCalls.map((c) => c.task).sort()).toEqual(['<MORE_DETAILED_CAPTION>', '<OD>']);
 
     // No JS errors
     const errors = await page.evaluate(() => window.__jsErrors ?? []);

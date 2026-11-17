@@ -7,6 +7,7 @@
  *   Right B (blue)     → 'cycleModel'
  *   Left  X (yellow)   → 'cyclePreviewDistance'
  *   Left  Y (green)    → 'export'
+ *   Left  stick press  → 'toggleCamera' (the camera is off until this is pressed)
  *   Either Trigger     → 'cycleDisplayMode'
  */
 
@@ -17,12 +18,14 @@ export class ControllerInputSystem extends createSystem({}) {
   init() {
     this._onCapture = null;
     this._onExport  = null;
+    this._onToggleCamera = null;
   }
 
-  /** @param {{ capture: Function, export: Function }} handlers */
-  setHandlers({ capture, export: exportFn }) {
+  /** @param {{ capture: Function, export: Function, toggleCamera?: Function }} handlers */
+  setHandlers({ capture, export: exportFn, toggleCamera = null }) {
     this._onCapture = capture;
     this._onExport  = exportFn;
+    this._onToggleCamera = toggleCamera;
   }
 
   update(_delta, _time) {
@@ -38,6 +41,7 @@ export class ControllerInputSystem extends createSystem({}) {
     if (left) {
       if (left.getButtonDown(InputComponent.X_Button)) appState.cyclePreviewDistance();
       if (left.getButtonDown(InputComponent.Y_Button)) this._onExport?.();
+      if (left.getButtonDown(InputComponent.Thumbstick)) this._onToggleCamera?.();
     }
 
     if (right?.getButtonDown(InputComponent.Trigger) ||

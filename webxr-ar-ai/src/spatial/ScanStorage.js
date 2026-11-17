@@ -23,7 +23,7 @@ const PIN_FIELDS = [
   'id', 'source', 'label', 'worldRotation', 'confidence', 'bboxCxCyWH',
   'hitType', 'placementConfidence', 'trackId', 'captureFrameIndex',
   'captureId', 'captureSessionId', 'semanticLabels', 'planeExtents',
-  'volumeExtents', 'maskRleJson', 'florenceCaption', 'createdAt',
+  'volumeExtents', 'maskRleJson', 'florenceCaption', 'boxSizeM', 'createdAt',
 ];
 
 export class ScanStorage {

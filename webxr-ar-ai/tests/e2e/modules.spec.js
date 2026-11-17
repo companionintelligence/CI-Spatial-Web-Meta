@@ -23,21 +23,22 @@ test.describe('AppState (browser)', () => {
     await waitForHarness(page);
   });
 
-  test('initial model preset is Florence', async ({ page }) => {
+  test('initial model preset is the local scan', async ({ page }) => {
     const preset = await page.evaluate(() => window.CS.appState.modelPreset);
-    expect(preset).toBe('Florence');
+    expect(preset).toBe('Local');
   });
 
-  test('cycleModel advances through Florence → GDino → SAM2 → Florence', async ({ page }) => {
+  test('cycleModel advances through Local → Florence → GDino → SAM2 → Local', async ({ page }) => {
     const steps = await page.evaluate(() => {
       const { appState } = window.CS;
       return [
+        appState.cycleModel(), // Local → Florence
         appState.cycleModel(), // Florence → GDino
         appState.cycleModel(), // GDino → SAM2
-        appState.cycleModel(), // SAM2 → Florence
+        appState.cycleModel(), // SAM2 → Local
       ];
     });
-    expect(steps).toEqual(['GDino', 'SAM2', 'Florence']);
+    expect(steps).toEqual(['Florence', 'GDino', 'SAM2', 'Local']);
   });
 
   test('cycleDisplayMode advances through all modes', async ({ page }) => {

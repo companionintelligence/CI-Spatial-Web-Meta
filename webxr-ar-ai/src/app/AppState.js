@@ -1,12 +1,16 @@
 /**
  * AppState — singleton reactive state shared across all systems.
  *
- * Model preset: which AI models run on each capture.
+ * Model preset: which AI models run on each capture. `Local` posts the keyframe to
+ * the local scan API (/v1/scans) and is the default.
  * Display mode: what spatial visualisation is shown.
  * Preview distance: fallback raycast depth.
+ * Camera: whether the camera is on for this headset session (off by default).
+ * Planes: the room's planes as of the last refresh. Scan: the last scan's id and count.
  */
 
 export const ModelPreset = Object.freeze({
+  Local:    'Local',
   Florence: 'Florence',
   GDino:    'GDino',
   SAM2:     'SAM2',
@@ -24,7 +28,7 @@ export const PreviewDistance = Object.freeze({
   Off:  0,
 });
 
-const MODEL_CYCLE  = [ModelPreset.Florence, ModelPreset.GDino, ModelPreset.SAM2];
+const MODEL_CYCLE  = [ModelPreset.Local, ModelPreset.Florence, ModelPreset.GDino, ModelPreset.SAM2];
 const DISPLAY_CYCLE = [
   DisplayMode.BoundingBox2D,
   DisplayMode.SpatialLabel3D,
@@ -40,15 +44,39 @@ class AppState {
   constructor() {
     /** Model ids available for cycling; replaced by the server registry at boot. */
     this.models          = [...MODEL_CYCLE];
-    this.modelPreset     = ModelPreset.Florence;
+    this.modelPreset     = ModelPreset.Local;
     this.displayMode     = DisplayMode.Both;
     this.previewDistance = PreviewDistance.Near;
     this.isBusy          = false;
     this.captureSessionId = crypto.randomUUID?.() ?? String(Date.now());
+    /** Camera opt-in for this headset session. Never persisted (src/privacy/capturePolicy.js). */
+    this.cameraOn = false;
+    /** @type {Array<object>} contract Plane records for the room, largest first */
+    this.planes = [];
+    /** @type {{id: string, detections: number}|null} the scan this session files into */
+    this.scan = null;
     /** @type {{text: string, level: 'info'|'ok'|'warn'|'error', at: number}} */
     this.status = { text: '', level: 'info', at: 0 };
     /** @type {Set<Function>} */
     this._listeners = new Set();
+  }
+
+  /** @param {boolean} on */
+  setCameraOn(on) {
+    this.cameraOn = Boolean(on);
+    this._notify('cameraOn');
+  }
+
+  /** @param {Array<object>} planes */
+  setPlanes(planes) {
+    this.planes = Array.isArray(planes) ? planes : [];
+    this._notify('planes');
+  }
+
+  /** @param {{id: string, detections: number}|null} scan */
+  setScan(scan) {
+    this.scan = scan ?? null;
+    this._notify('scan');
   }
 
   subscribe(fn) {

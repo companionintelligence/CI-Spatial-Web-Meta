@@ -132,7 +132,10 @@ export class CameraViewfinder {
 
   _bindVideo() {
     if (!this._videoMat || !this._cameraEntity) return;
-    const videoEl = this._cameraEntity.getValue(CameraSource, 'videoElement');
+    // With the camera off the entity has no CameraSource: there is nothing to show.
+    const videoEl = this._cameraEntity.hasComponent?.(CameraSource)
+      ? this._cameraEntity.getValue(CameraSource, 'videoElement')
+      : null;
     if (videoEl === this._boundVideo) return;
 
     this.unbind();

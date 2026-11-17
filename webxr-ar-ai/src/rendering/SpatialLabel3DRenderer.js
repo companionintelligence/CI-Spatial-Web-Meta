@@ -192,15 +192,43 @@ function _buildLabelGroup(pin, color) {
   group.add(lblMesh);
 
   group.userData.labelMesh = lblMesh;
+
+  // The detection's box, at its real size where it lands in the room (a detection
+  // placed by the local scan carries boxSizeM). The frame faces back along the capture ray.
+  const size = pin.boxSizeM;
+  if (size && size.w > 0 && size.h > 0) {
+    const frame = _buildBoxFrame(size, color);
+    group.add(frame);
+    group.userData.boxFrame = frame;
+  }
   return group;
 }
 
+function _buildBoxFrame({ w, h }, color) {
+  const corners = [
+    new THREE.Vector3(-w / 2, -h / 2, 0),
+    new THREE.Vector3(w / 2, -h / 2, 0),
+    new THREE.Vector3(w / 2, h / 2, 0),
+    new THREE.Vector3(-w / 2, h / 2, 0),
+  ];
+  const geometry = new THREE.BufferGeometry().setFromPoints(corners);
+  const material = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9, depthTest: false });
+  const frame = new THREE.LineLoop(geometry, material);
+  frame.renderOrder = 2;
+  return frame;
+}
+
 function _disposeGroup(group) {
-  // Only per-pin resources (label texture + material) are disposed; disc
+  // Only per-pin resources (label texture + material, box frame) are disposed; disc
   // geometry/materials and label geometry are shared across all pins.
   const lbl = group.userData.labelMesh;
   if (lbl) {
     if (lbl.material.map) lbl.material.map.dispose();
     lbl.material.dispose();
+  }
+  const frame = group.userData.boxFrame;
+  if (frame) {
+    frame.geometry.dispose();
+    frame.material.dispose();
   }
 }
