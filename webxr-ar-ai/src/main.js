@@ -49,14 +49,14 @@ import { initColorScheme }           from './ui/theme.js';
 import { finishSignIn }              from './net/PortalSession.js';
 import { detectQuestApp, shouldEnterArOnLoad } from './app/questApp.js';
 import { startArSession }            from './app/arSession.js';
+import { roomSetupGate }             from './privacy/capturePolicy.js';
 import '@companionintelligence/tokens/tokens.css';
 import '@companionintelligence/fonts/manrope.css';
 
 // Target refresh rate for the immersive session (Hz).
 const TARGET_FRAME_RATE = 90;
-// How long to wait after session start before prompting native Space Setup
+// (Space Setup is no longer started on a timer: see roomSetupGate in capturePolicy.js.)
 // when no scene data exists (ms).
-const ROOM_CAPTURE_GRACE_MS = 2000;
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 
@@ -182,8 +182,7 @@ class CompanionScanSystem extends createSystem({
     this._capturing = false;
     this._hudReady  = false;
     this._menuReady = false;
-    this._sessionStartedAt   = 0;
-    this._roomCaptureChecked = false;
+    this._roomSetupRequested = false;
 
     // ── Services ─────────────────────────────────────────────────────────
     this._pipelineB     = new PipelineB(this.world, pinManager, cvClient, localScan);
@@ -231,8 +230,7 @@ class CompanionScanSystem extends createSystem({
 
     // ── Session lifecycle ─────────────────────────────────────────────────
     this.renderer.xr.addEventListener('sessionstart', () => {
-      this._sessionStartedAt   = Date.now();
-      this._roomCaptureChecked = false;
+      this._roomSetupRequested = false;
       this._applyQuestSessionSettings();
     });
 
@@ -266,7 +264,6 @@ class CompanionScanSystem extends createSystem({
     if (this.renderer.xr.isPresenting) {
       if (!this._hudReady)  this._hudReady  = this._wristHUD.init();
       if (!this._menuReady) this._menuReady = buildControllerMenu(this.world);
-      this._maybeInitiateRoomCapture();
     }
 
     this._viewfinder.update();
@@ -338,28 +335,32 @@ class CompanionScanSystem extends createSystem({
   }
 
   /**
-   * If the user has never run Space Setup there is no scene data and both
-   * pipelines degrade (no Pipeline A pins, no raycast targets). After a grace
-   * period with zero planes/meshes, launch the native capture flow.
-   *
-   * Note: room capture can invalidate existing spatial anchors, which is why
-   * this only fires when there is no scene data (and therefore no scan yet).
+   * Space Setup, the headset's own room scan, runs only when the user asks for it: a
+   * capture press, with the camera opted in, in a room with no scene data yet. Room
+   * capture can invalidate existing spatial anchors, which is why it is never started
+   * by itself. The press that starts it captures nothing; the next press does.
+   * @returns {boolean} true when this press started Space Setup
    */
-  _maybeInitiateRoomCapture() {
-    if (this._roomCaptureChecked || !this._sessionStartedAt) return;
-    if (Date.now() - this._sessionStartedAt < ROOM_CAPTURE_GRACE_MS) return;
-    this._roomCaptureChecked = true;
-
-    const hasScene =
+  _maybeStartRoomSetup() {
+    const session = this.renderer.xr.getSession();
+    const hasSceneData =
       this.queries.planeEntities.entities.size > 0 ||
       this.queries.meshEntities.entities.size > 0;
-    const session = this.renderer.xr.getSession();
-    if (!hasScene && session?.initiateRoomCapture) {
-      console.log('[CompanionScan] No scene data — launching Space Setup');
-      session.initiateRoomCapture().catch(err =>
-        console.warn('[CompanionScan] initiateRoomCapture failed:', err),
-      );
-    }
+    const gate = roomSetupGate({
+      cameraOn: appState.cameraOn,
+      hasSceneData,
+      alreadyRequested: this._roomSetupRequested,
+      sessionCanScanRoom: typeof session?.initiateRoomCapture === 'function',
+    });
+    if (!gate.allowed) return false;
+
+    this._roomSetupRequested = true;
+    appState.setStatus(gate.text, 'info');
+    session.initiateRoomCapture().catch((err) => {
+      this._roomSetupRequested = false;
+      appState.setStatus(`Room setup did not start: ${err?.message ?? err}`, 'warn');
+    });
+    return true;
   }
 
   // ── Capture ───────────────────────────────────────────────────────────────
@@ -373,6 +374,7 @@ class CompanionScanSystem extends createSystem({
   async _doCapture() {
     if (this._capturing || appState.isBusy) return;
     if (this.world.visibilityState.value !== VisibilityState.Visible) return;
+    if (this._maybeStartRoomSetup()) return;
     this._capturing = true;
     appState.setBusy(true);
 

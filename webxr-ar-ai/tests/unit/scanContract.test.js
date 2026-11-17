@@ -9,6 +9,7 @@ import {
   CAPTURE_LIMITS,
   CONTRACT_VERSION,
   buildAppendPayload,
+  consentRecord,
   buildCapturePayload,
   buildKeyframe,
   clientRecord,
@@ -37,9 +38,9 @@ function memoryStorage(initial = {}) {
 
 describe('contract constants', () => {
   it('matches the contract version and limits the server enforces', () => {
-    expect(CONTRACT_VERSION).toBe('1.0');
+    expect(CONTRACT_VERSION).toBe('1.2');
     const contract = readFileSync(`${REPO}cv-server/localscan/contract.py`, 'utf8');
-    expect(contract).toMatch(/CONTRACT_VERSION = "1\.0"/);
+    expect(contract).toMatch(/CONTRACT_VERSION = "1\.2"/);
     expect(contract).toMatch(new RegExp(`MAX_KEYFRAMES_PER_REQUEST = ${CAPTURE_LIMITS.maxKeyframesPerRequest}\\b`));
     expect(contract).toMatch(new RegExp(`MAX_PLANES = ${CAPTURE_LIMITS.maxPlanes}\\b`));
   });
@@ -88,11 +89,21 @@ describe('capture and append payloads', () => {
     expect(sortedKeys(payload.hierarchy)).toEqual(sortedKeys(request.hierarchy));
   });
 
-  it('builds an append payload whose planes may be omitted', () => {
-    expect(buildAppendPayload({ keyframes: request.keyframes, planes: null })).toEqual({
+  it('builds an append payload whose planes may be omitted, and that carries the consent', () => {
+    expect(buildAppendPayload({ keyframes: request.keyframes, planes: null, consent: request.consent })).toEqual({
       keyframes: request.keyframes,
       planes: null,
+      consent: request.consent,
     });
+  });
+
+  it('records the camera consent only while the camera is on', () => {
+    expect(consentRecord({ cameraOn: false, grantedAt: '2026-11-16T19:40:00Z' })).toBeNull();
+    expect(consentRecord({ cameraOn: true, grantedAt: '2026-11-16T19:40:00Z' })).toEqual({
+      camera: true,
+      granted_at: '2026-11-16T19:40:00Z',
+    });
+    expect(consentRecord({ cameraOn: true })).toEqual({ camera: true, granted_at: null });
   });
 
   it('builds the client record with the same keys as the worked request', () => {

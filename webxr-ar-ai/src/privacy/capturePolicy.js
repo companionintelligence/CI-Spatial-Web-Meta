@@ -40,6 +40,29 @@ export function cameraToggleLabel(cameraOn) {
 }
 
 /**
+ * Whether a press of Right A may start the headset's room scan (Space Setup) now.
+ *
+ * Space Setup is never started by itself. It starts only from a capture press, with the
+ * camera opted in, in a room with no scene data yet, and once per session. The press that
+ * starts it captures nothing; the next press captures.
+ *
+ * @param {{cameraOn: boolean, hasSceneData: boolean, alreadyRequested: boolean,
+ *          sessionCanScanRoom: boolean}} state
+ * @returns {{allowed: boolean, reason: 'ok'|'camera-off'|'scanned'|'requested'|'unsupported', text: string}}
+ */
+export function roomSetupGate({ cameraOn, hasSceneData, alreadyRequested, sessionCanScanRoom }) {
+  if (!sessionCanScanRoom) return { allowed: false, reason: 'unsupported', text: '' };
+  if (hasSceneData) return { allowed: false, reason: 'scanned', text: '' };
+  if (alreadyRequested) return { allowed: false, reason: 'requested', text: '' };
+  if (!cameraOn) return { allowed: false, reason: 'camera-off', text: '' };
+  return {
+    allowed: true,
+    reason: 'ok',
+    text: 'Room setup: follow the headset prompts. Press Right A again to capture when it is done.',
+  };
+}
+
+/**
  * Refuse any media constraint that asks for audio. Used before getUserMedia.
  * @param {MediaStreamConstraints} constraints
  * @returns {MediaStreamConstraints}

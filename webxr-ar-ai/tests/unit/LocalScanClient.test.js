@@ -62,6 +62,7 @@ function keyframe(captureId = 'cap-1') {
 }
 
 const HIERARCHY = defaultHierarchy('Kitchen');
+const CONSENT = { camera: true, granted_at: '2026-11-16T19:40:00.000Z' };
 const CLIENT = { name: 'companion-scan-quest', version: '1.0.0', device: 'meta-quest-3', session_id: null };
 
 describe('LocalScanClient — create, then append', () => {
@@ -69,12 +70,13 @@ describe('LocalScanClient — create, then append', () => {
     const { fetchImpl, calls } = fakeFetch([jsonResponse(201, createdBody)]);
     const client = new LocalScanClient({ getBaseUrl: () => 'http://192.168.1.20:8000', fetchImpl });
 
-    const result = await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe() });
+    const result = await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe() });
 
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe('http://192.168.1.20:8000/v1/scans');
     expect(calls[0].method).toBe('POST');
     expect(calls[0].body.hierarchy.room.name).toBe('Kitchen');
+    expect(calls[0].body.consent).toEqual(CONSENT);
     expect(calls[0].body.keyframes).toHaveLength(1);
     expect(result.scanId).toBe(SCAN_ID);
     expect(result.detections[0]).toEqual({
@@ -91,8 +93,8 @@ describe('LocalScanClient — create, then append', () => {
       jsonResponse(200, { ...createdBody, keyframes: [{ keyframe_id: 'kf-0002' }], detections: [] }),
     ]);
     const client = new LocalScanClient({ getBaseUrl: () => 'http://10.0.0.2:8000', fetchImpl });
-    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe('cap-1') });
-    const second = await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [{ id: 'plane-1' }], keyframe: keyframe('cap-2') });
+    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe('cap-1') });
+    const second = await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [{ id: 'plane-1' }], keyframe: keyframe('cap-2') });
 
     expect(calls[1].url).toBe(`http://10.0.0.2:8000/v1/scans/${SCAN_ID}/keyframes`);
     expect(calls[1].body.keyframes[0].client_keyframe_id).toBe('cap-2');
@@ -108,8 +110,8 @@ describe('LocalScanClient — create, then append', () => {
       jsonResponse(201, { ...createdBody, scan_id: newScan }),
     ]);
     const client = new LocalScanClient({ getBaseUrl: () => 'http://10.0.0.2:8000', fetchImpl });
-    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe() });
-    const result = await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe() });
+    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe() });
+    const result = await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe() });
 
     expect(calls[2].url).toBe('http://10.0.0.2:8000/v1/scans');
     expect(result.scanId).toBe(newScan);
@@ -118,16 +120,16 @@ describe('LocalScanClient — create, then append', () => {
   it('reset() makes the next capture start a new scan', async () => {
     const { fetchImpl, calls } = fakeFetch([jsonResponse(201, createdBody), jsonResponse(201, createdBody)]);
     const client = new LocalScanClient({ getBaseUrl: () => 'http://10.0.0.2:8000', fetchImpl });
-    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe() });
+    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe() });
     client.reset();
-    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe() });
+    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe() });
     expect(calls.map((c) => c.url)).toEqual(['http://10.0.0.2:8000/v1/scans', 'http://10.0.0.2:8000/v1/scans']);
   });
 
   it('turns a server error into a LocalScanError with the status', async () => {
     const { fetchImpl } = fakeFetch([jsonResponse(503, { detail: 'GroundingDINO is not installed' })]);
     const client = new LocalScanClient({ getBaseUrl: () => 'http://10.0.0.2:8000', fetchImpl });
-    const failure = await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe() })
+    const failure = await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe() })
       .catch((err) => err);
     expect(failure).toBeInstanceOf(LocalScanError);
     expect(failure.status).toBe(503);
@@ -141,8 +143,33 @@ describe('LocalScanClient — create, then append', () => {
       getAuthHeader: () => ({ Authorization: 'Bearer test-token' }),
       fetchImpl,
     });
-    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe() });
+    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe() });
     expect(calls[0].headers).toMatchObject({ Authorization: 'Bearer test-token', 'Content-Type': 'application/json' });
+  });
+});
+
+describe('LocalScanClient — camera consent', () => {
+  it('sends no keyframe without the camera consent, and makes no request', async () => {
+    const { fetchImpl } = fakeFetch([]);
+    const client = new LocalScanClient({ getBaseUrl: () => 'http://10.0.0.2:8000', fetchImpl });
+    await expect(
+      client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: null, planes: [], keyframe: keyframe() }),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: { camera: false }, planes: [], keyframe: keyframe() }),
+    ).rejects.toMatchObject({ status: 403 });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('sends the consent with every append as well', async () => {
+    const { fetchImpl, calls } = fakeFetch([
+      jsonResponse(201, createdBody),
+      jsonResponse(200, { ...createdBody, keyframes: [{ keyframe_id: 'kf-0002' }], detections: [] }),
+    ]);
+    const client = new LocalScanClient({ getBaseUrl: () => 'http://10.0.0.2:8000', fetchImpl });
+    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe('cap-1') });
+    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe('cap-2') });
+    expect(calls[1].body.consent).toEqual(CONSENT);
   });
 });
 
@@ -151,7 +178,7 @@ describe('LocalScanClient — the local-only rule', () => {
     const { fetchImpl } = fakeFetch([]);
     const client = new LocalScanClient({ getBaseUrl: () => 'https://meta.ci.computer', fetchImpl });
     await expect(
-      client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe() }),
+      client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe() }),
     ).rejects.toBeInstanceOf(NonLocalDestinationError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -164,7 +191,7 @@ describe('LocalScanClient — the local-only rule', () => {
       fetchImpl,
     });
     await expect(
-      client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe() }),
+      client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe() }),
     ).rejects.toBeInstanceOf(NonLocalDestinationError);
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -179,8 +206,8 @@ describe('LocalScanClient — the local-only rule', () => {
       getPageHref: () => 'https://192.168.1.20:8081/',
       fetchImpl,
     });
-    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe('cap-1') });
-    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, planes: [], keyframe: keyframe('cap-2') });
+    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe('cap-1') });
+    await client.submit({ hierarchy: HIERARCHY, client: CLIENT, consent: CONSENT, planes: [], keyframe: keyframe('cap-2') });
 
     expect(calls).toHaveLength(2);
     for (const call of calls) {

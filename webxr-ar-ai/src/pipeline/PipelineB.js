@@ -38,7 +38,7 @@ import { describeCvError } from '../cv/CvServerClient.js';
 import { ModelPreset, appState } from '../app/AppState.js';
 import { SceneRaycaster } from './SceneRaycaster.js';
 import { resolveCameraHfov, getLocalStorage } from './cameraCalibration.js';
-import { buildKeyframe, clientRecord } from '../scan/payload.js';
+import { buildKeyframe, clientRecord, consentRecord } from '../scan/payload.js';
 import { currentHierarchy } from '../scan/hierarchy.js';
 
 /** Pin distance along the ray when no scene geometry is hit (metres). */
@@ -72,6 +72,8 @@ export class PipelineB {
     /** @type {import('@iwsdk/core').Entity|null} Camera entity; CameraSource is added only when the camera is on */
     this._cameraEntity = null;
     this._cameraOn = false;
+    /** @type {string|null} when the camera was turned on in this session (ISO 8601) */
+    this._grantedAt = null;
 
     this._raycaster = new SceneRaycaster();
 
@@ -132,9 +134,13 @@ export class PipelineB {
 
     if (want) {
       this._cameraEntity.addComponent(CameraSource, { ...CAMERA_SOURCE_CONFIG });
-    } else if (this._cameraEntity.hasComponent?.(CameraSource)) {
-      this.world.getSystem?.(CameraSystem)?.stopCamera?.(this._cameraEntity);
-      this._cameraEntity.removeComponent(CameraSource);
+      this._grantedAt = new Date().toISOString();
+    } else {
+      if (this._cameraEntity.hasComponent?.(CameraSource)) {
+        this.world.getSystem?.(CameraSystem)?.stopCamera?.(this._cameraEntity);
+        this._cameraEntity.removeComponent(CameraSource);
+      }
+      this._grantedAt = null;
     }
     this._cameraOn = want;
     return want;
@@ -358,6 +364,7 @@ export class PipelineB {
     const result = await this.localScan.submit({
       hierarchy: currentHierarchy(),
       client: clientRecord({ sessionId: appState.captureSessionId }),
+      consent: consentRecord({ cameraOn: this._cameraOn, grantedAt: this._grantedAt }),
       planes,
       keyframe,
     });

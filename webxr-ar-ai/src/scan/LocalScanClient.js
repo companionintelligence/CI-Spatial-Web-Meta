@@ -83,20 +83,26 @@ export class LocalScanClient {
    * @param {object} args
    * @param {object} args.hierarchy   contract Hierarchy
    * @param {object} args.client      contract Client
+   * @param {object} args.consent     contract Consent, {camera: true, granted_at}. Required:
+   *                                  a keyframe is a camera frame, and is refused without it
    * @param {Array<object>} args.planes
    * @param {object} args.keyframe    from buildKeyframe()
    * @returns {Promise<{scanId: string, keyframes: object[], detections: object[]}>}
    *          detections are reshaped with detectionForPlacement
    */
-  async submit({ hierarchy, client, planes, keyframe }) {
+  async submit({ hierarchy, client, consent, planes, keyframe }) {
+    if (!consent || consent.camera !== true) {
+      // Checked here as well as on the server: nothing is sent without the user's opt-in.
+      throw new LocalScanError('Camera consent is required to send a keyframe.', { status: 403 });
+    }
     if (this._scanId) {
       const appended = await this._send('POST', `/v1/scans/${this._scanId}/keyframes`,
-        buildAppendPayload({ keyframes: [keyframe], planes }));
+        buildAppendPayload({ keyframes: [keyframe], planes, consent }));
       if (appended.status !== 404) return this._take(appended.json);
       this._scanId = null;   // the server does not have this scan any more
     }
     const created = await this._send('POST', '/v1/scans',
-      buildCapturePayload({ hierarchy, client, planes, keyframes: [keyframe] }));
+      buildCapturePayload({ hierarchy, client, consent, planes, keyframes: [keyframe] }));
     return this._take(created.json);
   }
 

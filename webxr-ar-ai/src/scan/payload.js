@@ -6,7 +6,7 @@
  * right-handed), and the image is a base64 JPEG without a data-URL prefix.
  */
 
-export const CONTRACT_VERSION = '1.0';
+export const CONTRACT_VERSION = '1.2';
 export const CLIENT_NAME = 'companion-scan-quest';
 export const CLIENT_VERSION = '1.0.0';
 export const CLIENT_DEVICE = 'meta-quest-3';
@@ -84,17 +84,29 @@ export function buildKeyframe({
 }
 
 /**
+ * The user's camera consent, as the server records it. Null while the camera is off:
+ * no keyframe may be sent without it (the server refuses those with 403).
+ * @param {{cameraOn: boolean, grantedAt?: string|null}} args
+ *        grantedAt: when the user turned the camera on in this session (ISO 8601)
+ * @returns {{camera: true, granted_at: string|null}|null}
+ */
+export function consentRecord({ cameraOn, grantedAt = null } = {}) {
+  if (!cameraOn) return null;
+  return { camera: true, granted_at: grantedAt ?? null };
+}
+
+/**
  * The first request of a scan.
  * @returns {object} contract ScanCreate
  */
-export function buildCapturePayload({ hierarchy, client, planes = [], keyframes = [] }) {
-  return { hierarchy, client, planes, keyframes };
+export function buildCapturePayload({ hierarchy, client, consent = null, planes = [], keyframes = [] }) {
+  return { hierarchy, client, consent, planes, keyframes };
 }
 
 /**
  * A later capture of the same scan. The planes replace the stored planes.
  * @returns {object} contract KeyframesAppend
  */
-export function buildAppendPayload({ keyframes, planes }) {
-  return { keyframes, planes };
+export function buildAppendPayload({ keyframes, planes, consent = null }) {
+  return { keyframes, planes, consent };
 }

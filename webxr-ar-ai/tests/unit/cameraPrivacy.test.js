@@ -130,6 +130,53 @@ describe('camera opt-in', () => {
     expect(sent.client.device).toBe('meta-quest-3');
   });
 
+  it('sends the camera consent with the keyframe, dated to the moment the user opted in', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-16T19:40:00.000Z'));
+      const { world } = makeWorld();
+      const submit = vi.fn(async () => ({ scanId: 'scan_x', keyframes: [], detections: [] }));
+      const { pb } = makePipeline({ world, localScan: { submit } });
+      appState.modelPreset = ModelPreset.Local;
+
+      pb.setCameraOn(true);
+      vi.setSystemTime(new Date('2026-11-16T19:45:00.000Z'));
+      await pb.capture('cap-consent', []);
+
+      expect(submit.mock.calls[0][0].consent).toEqual({
+        camera: true,
+        granted_at: '2026-11-16T19:40:00.000Z',
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('dates a second opt-in to the second time, and sends no consent once the camera is off', async () => {
+    vi.useFakeTimers();
+    try {
+      const { world } = makeWorld();
+      const submit = vi.fn(async () => ({ scanId: 'scan_x', keyframes: [], detections: [] }));
+      const { pb } = makePipeline({ world, localScan: { submit } });
+      appState.modelPreset = ModelPreset.Local;
+
+      vi.setSystemTime(new Date('2026-11-16T19:40:00.000Z'));
+      pb.setCameraOn(true);
+      pb.setCameraOn(false);
+      vi.setSystemTime(new Date('2026-11-16T20:00:00.000Z'));
+      pb.setCameraOn(true);
+      await pb.capture('cap-again', []);
+      expect(submit.mock.calls[0][0].consent.granted_at).toBe('2026-11-16T20:00:00.000Z');
+
+      pb.setCameraOn(false);
+      const off = await pb.capture('cap-off-again', []);
+      expect(off.skipped).toBe('camera-off');
+      expect(submit).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('refuses a public scan server: the status names the host and nothing is sent', async () => {
     const { world } = makeWorld();
     const fetchImpl = vi.fn();

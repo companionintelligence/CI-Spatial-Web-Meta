@@ -11,6 +11,7 @@ import {
   assertNoAudio,
   cameraToggleLabel,
   recordingIndicator,
+  roomSetupGate,
 } from '../../src/privacy/capturePolicy.js';
 
 const SRC = fileURLToPath(new URL('../../src/', import.meta.url));
@@ -67,5 +68,48 @@ describe('recording indicator', () => {
   it('labels the control for the action it will take', () => {
     expect(cameraToggleLabel(false)).toBe('Turn camera on');
     expect(cameraToggleLabel(true)).toBe('Turn camera off');
+  });
+});
+
+describe('Space Setup — the room scan is never started by itself', () => {
+  const unscannedWithCamera = {
+    cameraOn: true,
+    hasSceneData: false,
+    alreadyRequested: false,
+    sessionCanScanRoom: true,
+  };
+
+  it('starts on a capture press, with the camera opted in, in a room with no scene data', () => {
+    const gate = roomSetupGate(unscannedWithCamera);
+    expect(gate).toMatchObject({ allowed: true, reason: 'ok' });
+    expect(gate.text).toMatch(/Press Right A again/);
+  });
+
+  it('does not start while the camera is off, so no opt-in means no room scan', () => {
+    expect(roomSetupGate({ ...unscannedWithCamera, cameraOn: false })).toMatchObject({
+      allowed: false,
+      reason: 'camera-off',
+    });
+  });
+
+  it('does not start in a room that already has scene data', () => {
+    expect(roomSetupGate({ ...unscannedWithCamera, hasSceneData: true })).toMatchObject({
+      allowed: false,
+      reason: 'scanned',
+    });
+  });
+
+  it('starts once per session: a second press is a capture, not another room scan', () => {
+    expect(roomSetupGate({ ...unscannedWithCamera, alreadyRequested: true })).toMatchObject({
+      allowed: false,
+      reason: 'requested',
+    });
+  });
+
+  it('does nothing where the session cannot scan the room', () => {
+    expect(roomSetupGate({ ...unscannedWithCamera, sessionCanScanRoom: false })).toMatchObject({
+      allowed: false,
+      reason: 'unsupported',
+    });
   });
 });

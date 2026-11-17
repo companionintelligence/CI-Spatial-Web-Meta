@@ -25,6 +25,27 @@ async function scanPosts(request) {
   return (await res.json()).scans;
 }
 
+/**
+ * Give the XR session a room-setup method that only counts calls. IWER has none, so the
+ * app would otherwise have no Space Setup to start. Must run before the page loads.
+ */
+async function installRoomSetupStub(page) {
+  await page.addInitScript(() => {
+    window.__roomSetupCalls = 0;
+    const xr = navigator.xr;
+    if (!xr || typeof xr.requestSession !== 'function') return;
+    const requestSession = xr.requestSession.bind(xr);
+    xr.requestSession = async (...args) => {
+      const session = await requestSession(...args);
+      session.initiateRoomCapture = () => {
+        window.__roomSetupCalls += 1;
+        return Promise.resolve();
+      };
+      return session;
+    };
+  });
+}
+
 test.describe('Camera privacy and the local scan', () => {
   test.beforeEach(async ({ page, request }) => {
     await resetMock(request);
@@ -128,5 +149,53 @@ test.describe('Camera privacy and the local scan', () => {
     const scans = await scanPosts(request);
     const latest = scans[scans.length - 1];
     expect(latest.record.hierarchy.room).toEqual({ id: 'room-kitchen', name: 'Kitchen' });
+  });
+});
+
+test.describe('Space Setup — started only by a capture press, with the camera opted in', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await resetMock(request);
+    await installIwer(page);
+    await installFakeCamera(page);
+    await installRoomSetupStub(page);
+    await page.goto('/');
+    await grantXrSession(page, 15_000);
+    await connectControllers(page);
+    await page.waitForTimeout(500);
+  });
+
+  test('is not started by the session itself, nor by a capture with the camera off', async ({ page }) => {
+    await page.waitForTimeout(3000);   // long enough for the old two-second start to have fired
+    expect(await page.evaluate(() => window.__roomSetupCalls)).toBe(0);
+
+    await page.evaluate(() => window.__companionScan.runCapture());
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(() => window.__roomSetupCalls)).toBe(0);
+  });
+
+  test('with the camera on, the first capture starts it and sends nothing; the next capture is sent with the consent', async ({ page }) => {
+    const posts = [];
+    page.on('request', (req) => {
+      if (req.method() === 'POST' && new URL(req.url()).pathname === '/v1/scans') posts.push(req.url());
+    });
+
+    await page.evaluate(() => window.__companionScan.setCameraOn(true));
+    await page.waitForTimeout(1500);
+    await page.evaluate(() => window.__companionScan.runCapture());
+
+    await expect.poll(() => page.evaluate(() => window.__roomSetupCalls), { timeout: 5000 }).toBe(1);
+    expect(posts).toHaveLength(0);
+    await expect(page.locator('#co-status-line')).toContainText('Room setup');
+
+    const posted = page.waitForRequest(
+      (req) => req.method() === 'POST' && new URL(req.url()).pathname === '/v1/scans',
+      { timeout: 15_000 },
+    );
+    await page.evaluate(() => window.__companionScan.runCapture());
+    const body = (await posted).postDataJSON();
+
+    expect(body.consent.camera).toBe(true);
+    expect(typeof body.consent.granted_at).toBe('string');
+    expect(await page.evaluate(() => window.__roomSetupCalls)).toBe(1);
   });
 });
