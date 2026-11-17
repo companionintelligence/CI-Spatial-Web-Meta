@@ -24,6 +24,10 @@
     "device": "meta-quest-3",
     "session_id": "3f0c9a7e-2d1b-4b8e-9c57-1a2b3c4d5e6f"
   },
+  "consent": {
+    "camera": true,
+    "granted_at": "2026-11-16T19:40:00Z"
+  },
   "planes": [
     {
       "id": "plane-1",

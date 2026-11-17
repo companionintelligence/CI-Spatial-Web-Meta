@@ -294,7 +294,7 @@
   "description": "What the server returns for a create or append: what this request added.",
   "properties": {
     "contract_version": {
-      "default": "1.0",
+      "default": "1.2",
       "title": "Contract Version",
       "type": "string"
     },

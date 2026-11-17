@@ -1,0 +1,41 @@
+{
+  "additionalProperties": false,
+  "description": "The user's opt-in for camera capture. The server keeps no keyframe without camera=true.",
+  "properties": {
+    "camera": {
+      "title": "Camera",
+      "type": "boolean"
+    },
+    "granted_at": {
+      "anyOf": [
+        {
+          "maxLength": 40,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Granted At"
+    },
+    "recorded_at": {
+      "anyOf": [
+        {
+          "maxLength": 40,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Recorded At"
+    }
+  },
+  "required": [
+    "camera"
+  ],
+  "title": "Consent",
+  "type": "object"
+}

@@ -38,6 +38,47 @@
       "title": "Client",
       "type": "object"
     },
+    "Consent": {
+      "additionalProperties": false,
+      "description": "The user's opt-in for camera capture. The server keeps no keyframe without camera=true.",
+      "properties": {
+        "camera": {
+          "title": "Camera",
+          "type": "boolean"
+        },
+        "granted_at": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Granted At"
+        },
+        "recorded_at": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recorded At"
+        }
+      },
+      "required": [
+        "camera"
+      ],
+      "title": "Consent",
+      "type": "object"
+    },
     "Detection": {
       "additionalProperties": false,
       "description": "One OBJECT: a labelled 2D box in one keyframe. Placed in the room by the headset.",
@@ -477,7 +518,7 @@
   "description": "A stored scan, as GET /v1/scans/{scan_id} returns it.",
   "properties": {
     "contract_version": {
-      "default": "1.0",
+      "default": "1.2",
       "title": "Contract Version",
       "type": "string"
     },
@@ -501,6 +542,17 @@
       "anyOf": [
         {
           "$ref": "#/$defs/Client"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "consent": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Consent"
         },
         {
           "type": "null"

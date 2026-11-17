@@ -15,7 +15,7 @@ from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-CONTRACT_VERSION = "1.0"
+CONTRACT_VERSION = "1.2"
 
 # A value that is a fraction of the keyframe image (0 at the left or top edge, 1 at the right or bottom).
 Unit = Annotated[float, Field(ge=0, le=1)]
@@ -83,6 +83,16 @@ class Hierarchy(_Model):
     building: Named
     floor: Floor
     room: Named
+
+
+class Consent(_Model):
+    """The user's opt-in for camera capture. The server keeps no keyframe without camera=true."""
+
+    camera: bool
+    # When the user turned the camera on in this session (ISO 8601, from the headset).
+    granted_at: Optional[str] = Field(default=None, max_length=40)
+    # When the server accepted the keyframes (ISO 8601, set by the server).
+    recorded_at: Optional[str] = Field(default=None, max_length=40)
 
 
 class Client(_Model):
@@ -172,6 +182,7 @@ class ScanCreate(_Model):
 
     hierarchy: Hierarchy
     client: Optional[Client] = None
+    consent: Optional[Consent] = None
     planes: list[Plane] = Field(default_factory=list, max_length=MAX_PLANES)
     keyframes: list[KeyframeIn] = Field(default_factory=list, max_length=MAX_KEYFRAMES_PER_REQUEST)
 
@@ -181,6 +192,7 @@ class KeyframesAppend(_Model):
 
     keyframes: list[KeyframeIn] = Field(min_length=1, max_length=MAX_KEYFRAMES_PER_REQUEST)
     planes: Optional[list[Plane]] = Field(default=None, max_length=MAX_PLANES)
+    consent: Optional[Consent] = None
 
 
 class CaptureResult(_Model):
@@ -201,6 +213,7 @@ class ScanRecord(_Model):
     updated_at: str
     hierarchy: Hierarchy
     client: Optional[Client] = None
+    consent: Optional[Consent] = None
     planes: list[Plane]
     keyframes: list[KeyframeOut]
     detections: list[Detection]
@@ -222,6 +235,7 @@ PUBLISHED_MODELS: dict[str, type[BaseModel]] = {
     "detection": Detection,
     "plane": Plane,
     "hierarchy": Hierarchy,
+    "consent": Consent,
     "capture-request": ScanCreate,
     "keyframes-append": KeyframesAppend,
     "capture-result": CaptureResult,

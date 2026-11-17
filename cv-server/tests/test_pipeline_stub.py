@@ -58,7 +58,7 @@ def test_appending_a_keyframe_continues_the_scan(client, example_request):
     extra["client_keyframe_id"] = "cap-2"
     response = client.post(
         f"/v1/scans/{scan_id}/keyframes",
-        json={"keyframes": [extra], "planes": example_request["planes"][:1]},
+        json={"keyframes": [extra], "planes": example_request["planes"][:1], "consent": example_request["consent"]},
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -79,7 +79,10 @@ def test_stub_output_is_deterministic(client, example_request):
 
 def test_unknown_or_malformed_scan_id_is_not_found(client, example_request):
     assert client.get("/v1/scans/scan_does_not_exist").status_code == 404
-    response = client.post("/v1/scans/scan_00/keyframes", json={"keyframes": [example_request["keyframes"][0]]})
+    response = client.post(
+        "/v1/scans/scan_00/keyframes",
+        json={"keyframes": [example_request["keyframes"][0]], "consent": example_request["consent"]},
+    )
     assert response.status_code == 404
 
 

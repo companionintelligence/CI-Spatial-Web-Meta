@@ -62,6 +62,8 @@ def example_request() -> dict:
             "device": "meta-quest-3",
             "session_id": "3f0c9a7e-2d1b-4b8e-9c57-1a2b3c4d5e6f",
         },
+        # The camera was turned on in this session, so the keyframes may be kept.
+        "consent": {"camera": True, "granted_at": "2026-11-16T19:40:00Z"},
         "planes": [
             {
                 "id": "plane-1",

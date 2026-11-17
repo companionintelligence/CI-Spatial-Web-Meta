@@ -1,5 +1,46 @@
 {
   "$defs": {
+    "Consent": {
+      "additionalProperties": false,
+      "description": "The user's opt-in for camera capture. The server keeps no keyframe without camera=true.",
+      "properties": {
+        "camera": {
+          "title": "Camera",
+          "type": "boolean"
+        },
+        "granted_at": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Granted At"
+        },
+        "recorded_at": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recorded At"
+        }
+      },
+      "required": [
+        "camera"
+      ],
+      "title": "Consent",
+      "type": "object"
+    },
     "Extent2": {
       "additionalProperties": false,
       "description": "A size or centre on a plane, in plane-local metres (x and z; the plane normal is +y).",
@@ -290,6 +331,17 @@
       ],
       "default": null,
       "title": "Planes"
+    },
+    "consent": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Consent"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     }
   },
   "required": [

@@ -25,6 +25,7 @@ from .contract import (
     CONTRACT_VERSION,
     MAX_IMAGE_BYTES,
     CaptureResult,
+    Consent,
     Detection,
     DetectorInfo,
     ImageOut,
@@ -76,6 +77,26 @@ def _decode_jpeg(image: ImageIn) -> tuple[bytes, Image.Image]:
             ),
         )
     return raw, decoded.convert("RGB")
+
+
+def _require_camera_consent(consent: Optional[Consent]) -> None:
+    """Keyframes are camera frames: they are kept only when the user opted in to the camera."""
+    if consent is None or not consent.camera:
+        raise HTTPException(
+            status_code=403,
+            detail="keyframes need the camera opt-in: consent.camera must be true",
+        )
+
+
+def _stored_consent(consent: Optional[Consent]) -> Optional[dict]:
+    """The consent as the record keeps it, with the time the server accepted it."""
+    if consent is None:
+        return None
+    return {
+        "camera": consent.camera,
+        "granted_at": consent.granted_at,
+        "recorded_at": utc_now_iso(),
+    }
 
 
 def _detector(provider: DetectorProvider) -> Detector:
@@ -153,6 +174,8 @@ def build_router(store: ScanStore, get_detector: DetectorProvider) -> APIRouter:
 
     @router.post("", response_model=CaptureResult, status_code=201)
     def create_scan(body: ScanCreate) -> CaptureResult:
+        if body.keyframes:
+            _require_camera_consent(body.consent)   # refused before anything is written
         scan_id = f"scan_{uuid.uuid4().hex}"
         now = utc_now_iso()
         record = {
@@ -162,6 +185,7 @@ def build_router(store: ScanStore, get_detector: DetectorProvider) -> APIRouter:
             "updated_at": now,
             "hierarchy": body.hierarchy.model_dump(mode="json"),
             "client": body.client.model_dump(mode="json") if body.client else None,
+            "consent": _stored_consent(body.consent),
             "planes": [p.model_dump(mode="json") for p in body.planes],
             "keyframes": [],
             "detections": [],
@@ -182,8 +206,10 @@ def build_router(store: ScanStore, get_detector: DetectorProvider) -> APIRouter:
 
     @router.post("/{scan_id}/keyframes", response_model=CaptureResult)
     def append_keyframes(scan_id: str, body: KeyframesAppend) -> CaptureResult:
+        _require_camera_consent(body.consent)   # refused before anything is written
         try:
             with store.transaction(scan_id) as stored:
+                stored["consent"] = _stored_consent(body.consent)
                 if body.planes is not None:
                     stored["planes"] = [p.model_dump(mode="json") for p in body.planes]
                 added_keyframes, added_detections = _ingest(

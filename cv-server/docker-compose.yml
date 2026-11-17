@@ -5,25 +5,25 @@ services:
     build: .
     image: companion-scan-cv-server:latest
     ports:
-      - "8000:8000"
+      # Published to this machine's loopback only. The headset reaches the API through
+      # the web app's dev server, which proxies /v1 (see README, "Run the local server").
+      - "127.0.0.1:8000:8000"
     volumes:
       - ./weights:/weights
       # Scans (keyframes, planes, detections) persist here, outside the container.
       - ./data:/data
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
-      - GLTF_STORE=/tmp/gltf_uploads
       - FLORENCE_MODEL_ID=microsoft/Florence-2-large
       # Local scan API (POST /v1/scans). groundingdino is the GPU backend; set
       # CV_DETECTOR=stub to run the pipeline without the weights.
       - CV_DETECTOR=${CV_DETECTOR:-groundingdino}
       - CV_DATA_DIR=/data
       - GDINO_WEIGHTS=/weights/groundingdino_swint_ogc.pth
-      # Comma-separated origins allowed to call /v1/* from a browser (CORS).
-      # Default "*" is fine on a trusted LAN; if this server is reachable
-      # from the internet, restrict it to your deployed frontend, e.g.
-      # - CORS_ALLOW_ORIGINS=https://webxr.ci.computer,https://meta.ci.computer
-      - CORS_ALLOW_ORIGINS=*
+      # The API token. Left empty, the server makes one and keeps it in ./data/api-token.
+      - CV_API_TOKEN=${CV_API_TOKEN:-}
+      # Origins allowed to call /v1/* from a browser. None by default; '*' is refused.
+      # - CORS_ALLOW_ORIGINS=https://webxr.ci.computer
     deploy:
       resources:
         reservations:
@@ -32,7 +32,7 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      test: ["CMD", "curl", "-fs", "http://localhost:8000/healthz"]
       interval: 30s
       timeout: 10s
       retries: 5
