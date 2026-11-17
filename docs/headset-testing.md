@@ -100,7 +100,8 @@ If CV pins land consistently left/right/short of where objects are:
 | Symptom | Cause / fix |
 |---------|-------------|
 | Certificate error page, no Proceed option | Open the URL with `https://` explicitly; re-run `npm run dev` so mkcert regenerates |
-| *CV server: Offline* with Docker running | Wrong proxy target — restart dev server with `CV_SERVER_URL=http://<cv-host>:8000`; check `curl http://<cv-host>:8000/v1/health` from the PC |
+| *CV server: Offline* with Docker running | Wrong proxy target — restart dev server with `CV_SERVER_URL=http://<cv-host>:8000`; check `curl http://<cv-host>:8000/healthz` from the PC |
+| *CV server: Needs token* | The server is up but refuses the app's token — open the app once as `?token=<token>` (the token is in `cv-server/data/api-token`, or `CV_API_TOKEN`) |
 | Viewfinder never appears | Camera permission denied — reset site permissions in browser settings; needs Horizon OS v74+ |
 | No blue scene pins on capture | No Space Setup data and room-capture prompt dismissed — Settings → Physical Space → Space Setup, then reload |
 | Captures hit nothing (all pins at fallback distance) | Same as above: the local raycaster needs scene geometry |

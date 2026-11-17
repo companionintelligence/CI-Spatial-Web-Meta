@@ -52,9 +52,13 @@ The server starts on **http://localhost:8000**.
 ### 3. Verify
 
 ```bash
-curl http://localhost:8000/v1/health
+curl http://localhost:8000/healthz
+# { "status": "ok" }
+curl -H "Authorization: Bearer $(cat data/api-token)" http://localhost:8000/v1/health
 # { "status": "ok", "device": "cuda", "cuda": true }
 ```
+
+`/healthz` needs no token. `/v1/health` does: `data/api-token` holds it unless `CV_API_TOKEN` is set (see [Access](#access)).
 
 ## Local scan API (v1)
 
@@ -202,4 +206,4 @@ Ensure:
 
 - Runner labels: `self-hosted`, `windows`, `x64`, `gpu`
 - The cv-server Docker container is running as a stable local service
-- Health check passes: `http://localhost:8000/v1/health`
+- Health check passes: `http://localhost:8000/healthz` (no token needed). A check of the GPU needs `/v1/health` with the token.
