@@ -79,6 +79,38 @@ describe('CvServerClient — health()', () => {
   });
 });
 
+describe('CvServerClient — healthState()', () => {
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('is online for a 200, and sends the token it was given', async () => {
+    const mockFn = mockFetch({});
+    vi.stubGlobal('fetch', mockFn);
+    const c = new CvServerClient({ baseUrl: 'http://server', getAuthHeader: () => ({ Authorization: 'Bearer abc' }) });
+    expect(await c.healthState()).toBe('online');
+    expect(mockFn.mock.calls[0][1].headers).toEqual({ Authorization: 'Bearer abc' });
+  });
+
+  it('is needs-token for a 401: the server is up but wants its token', async () => {
+    vi.stubGlobal('fetch', mockFetch({ detail: 'unauthorized' }, { status: 401, ok: false }));
+    expect(await new CvServerClient().healthState()).toBe('needs-token');
+  });
+
+  it('is offline for any other error status', async () => {
+    vi.stubGlobal('fetch', mockFetch({}, { status: 503, ok: false }));
+    expect(await new CvServerClient().healthState()).toBe('offline');
+  });
+
+  it('rejects when the server cannot be reached', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    await expect(new CvServerClient().healthState()).rejects.toThrow('Failed to fetch');
+  });
+
+  it('health() is true only when the server is online', async () => {
+    vi.stubGlobal('fetch', mockFetch({}, { status: 401, ok: false }));
+    expect(await new CvServerClient().health()).toBe(false);
+  });
+});
+
 describe('CvServerClient — detect()', () => {
   it('POSTs to /v1/detect with correct JSON body', async () => {
     const response = { detections: [{ label: 'chair', cx: 0.5, cy: 0.5, confidence: 0.8, bbox_cxcywh: [0.5, 0.5, 0.2, 0.3] }] };

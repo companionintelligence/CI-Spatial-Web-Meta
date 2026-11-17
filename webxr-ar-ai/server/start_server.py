@@ -42,7 +42,7 @@ def _start():
     print("Step 3: Starting FastAPI server…")
     import uvicorn  # noqa: PLC0415
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=False)  # localhost only
 
 
 if __name__ == "__main__":

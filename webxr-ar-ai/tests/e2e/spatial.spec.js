@@ -327,6 +327,7 @@ test.describe('AppState — integration with SpatialPinManager', () => {
 
     const final = await page.evaluate(() => {
       const { appState } = window.CS;
+      appState.cycleModel(); // Local → Florence
       appState.cycleModel(); // Florence → GDino
       // Simulate other work
       const { SpatialPinManager, SpatialPin } = window.CS;

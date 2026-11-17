@@ -261,7 +261,8 @@ The most common first-run issues:
 | Problem | Fix |
 |---|---|
 | Certificate page won't proceed | Type the URL with `https://` explicitly |
-| `CV server: Offline` | Fine for geometry-only scans; otherwise check `CV_SERVER_URL` and that `curl http://<host>:8000/v1/health` works from the PC |
+| `CV server: Offline` | Fine for geometry-only scans; otherwise check `CV_SERVER_URL` and that `curl http://<host>:8000/healthz` works from the PC |
+| `CV server: Needs token` | The server is up but wants its token: open the app once with `?token=<token>` (the token is in `cv-server/data/api-token`) |
 | No viewfinder in AR | Camera permission was denied — reset it in browser site settings |
 | Capture finds no surfaces | Run Space Setup (Settings → Physical Space) and reload |
 | Export "did nothing" | Check the headset's Downloads folder — the toast is easy to miss |

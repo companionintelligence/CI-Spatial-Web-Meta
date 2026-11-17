@@ -19,8 +19,8 @@ test.describe('Desktop overlay', () => {
     const overlay = page.locator('#co-overlay');
     await expect(overlay).toBeVisible();
     await expect(overlay.locator('h1')).toHaveText('Companion Scan Quest');
-    // Five controller legend rows
-    await expect(overlay.locator('.co-key')).toHaveCount(5);
+    // Six controller legend rows (the Left stick toggles the camera)
+    await expect(overlay.locator('.co-key')).toHaveCount(6);
   });
 
   test('reports WebXR immersive-ar support (via IWER)', async ({ page }) => {
@@ -43,12 +43,24 @@ test.describe('Desktop overlay', () => {
     });
   });
 
+  test('says the CV server needs its token on a 401, not that it is offline', async ({ page }) => {
+    await page.route('**/v1/health', route => route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: '{"detail":"unauthorized"}',
+    }));
+    await page.reload();
+    await expect(page.locator('#co-cv-status')).toContainText(/needs token/i, { timeout: 15_000 });
+    await expect(page.locator('#co-cv-note')).toContainText('wants its token');
+  });
+
   test('adopts the model registry from the CV server', async ({ page }) => {
     await page.waitForFunction(
-      () => window.__companionScan?.appState?.models?.length === 4,
+      () => window.__companionScan?.appState?.models?.length === 5,
       { timeout: 15_000 },
     );
     const models = await page.evaluate(() => window.__companionScan.appState.models);
+    expect(models).toContain('Local');
     expect(models).toContain('YoloWorld');
   });
 

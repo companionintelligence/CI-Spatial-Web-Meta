@@ -113,6 +113,9 @@ Local CV Server (cv-server/ — Docker)
   POST /v1/detect   — GroundingDINO
   POST /v1/segment  — SAM 2
   POST /v1/florence — Florence-2
+  POST /v1/scans                       — local scan: keyframes + planes in, detections out (v1)
+  POST /v1/scans/{scan_id}/keyframes   — more keyframes for a scan
+  GET  /v1/scans/{scan_id}             — the stored scan record
   POST /v1/gltf     — Upload
   GET  /v1/health
 ```
@@ -165,6 +168,149 @@ The same site is also packaged as an app for Meta Horizon OS, which opens straig
 built with Meta's Bubblewrap from [`quest/`](quest/) by the manual
 [Quest app workflow](.github/workflows/quest-app.yml). Sideloading, signing and the remaining
 release steps are in [docs/quest-app.md](docs/quest-app.md).
+
+## Run the local server (room mapping, v1)
+
+A Quest 3 captures the room, and a server on your own network runs the vision. Nothing
+goes to a cloud API. The headset sends a keyframe (one JPEG, its pose, and the camera
+intrinsics) and the room's planes to `POST /v1/scans`, and gets back labelled boxes that
+it places in the room. The data contract is in [docs/data-contract.md](docs/data-contract.md).
+
+The server runs anywhere, with the **stub detector** by default: it needs no GPU and no
+model weights, and it returns deterministic placeholder boxes marked `"detector": "stub"`.
+The real detector is GroundingDINO, selected with a setting. Nothing in the test suite
+needs it.
+
+```bash
+cd cv-server
+python3 -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+CV_DETECTOR=stub python serve.py          # listens on 127.0.0.1:8000
+```
+
+The API needs a token on every `/v1` request. Set `CV_API_TOKEN` (at least 24 characters),
+or let the server create one in `cv-server/data/api-token` on its first start (mode `0600`).
+The server never prints it. Read it from that file when you need it:
+
+```bash
+curl -H "Authorization: Bearer $(cat cv-server/data/api-token)" http://127.0.0.1:8000/v1/health
+curl http://127.0.0.1:8000/healthz         # liveness only, no token, reveals nothing
+```
+
+The server listens on `127.0.0.1` unless you set `CV_HOST`. The headset never reaches it
+directly: the web app's dev server proxies `/v1` to it, so the port stays on this machine.
+
+Then start the web app. Its dev server proxies `/v1/*` to the server on `localhost:8000`,
+so the headset talks to the page's own origin, which avoids the browser's mixed-content block:
+
+```bash
+cd webxr-ar-ai
+npm ci                 # needs NODE_AUTH_TOKEN; see Theme
+npm run dev            # https://<PC-IP>:8081, the address the Quest opens
+```
+
+Point the proxy elsewhere with `CV_SERVER_URL=http://<server-ip>:8000 npm run dev`.
+Open the app once with the token in the link, `https://<PC-IP>:8081/?token=<token>`. The app
+keeps the token for that origin, then removes it from the address bar.
+
+**Real detector (GroundingDINO, on a GPU machine).** Install `torch` and `groundingdino-py`,
+put `groundingdino_swint_ogc.pth` in place, and run:
+
+```bash
+CV_DETECTOR=groundingdino GDINO_WEIGHTS=/path/to/groundingdino_swint_ogc.pth python serve.py
+```
+
+Or with Docker, see [cv-server/README.md](cv-server/README.md). Without the weights or the
+packages, `POST /v1/scans` answers `503` with the reason, and the headset shows it.
+
+**Where things are kept.** `cv-server/data/scans/<scan_id>/` (`scan.json` and the keyframe
+JPEGs), the glTF exports in `cv-server/data/gltf/`, and the token in `cv-server/data/api-token`,
+or `CV_DATA_DIR` if set. The folder is git-ignored, because scans and the token are private.
+
+**Tests** (no headset, no GPU, no torch):
+
+```bash
+python3 -m pytest cv-server/tests      # or: cd webxr-ar-ai && npm run test:cv-server
+cd webxr-ar-ai && npm run test:unit
+```
+
+**Privacy, in the app.**
+
+- The camera is **off** when a headset session starts. Nothing is captured or sent until
+  someone turns it on, with the Left stick or the overlay. The microphone is never requested.
+- While the camera is on, the wrist panel shows a red **REC** line, and the overlay shows a
+  REC pill with the server it sends to. Turning it off, or leaving AR, stops the stream.
+- Scan data goes only to a server on this network (loopback, a private address, or a `.local`
+  name). The app refuses any other host before it sends anything.
+- The server makes no outbound connections of its own. Keyframes need the camera consent: the
+  server refuses one without it, and keeps none.
+- Every `/v1` route needs the token. Cross-origin browser access is off unless
+  `CORS_ALLOW_ORIGINS` lists explicit origins.
+- Room setup (Space Setup) starts only from a capture press, with the camera on, in a room with
+  no scene data, once per session. It is never started by itself.
+- The sign-in token goes only to the memory server you choose. Checking a server asks first, and
+  sends no credential to it.
+
+## Quest 3 device checklist
+
+The emulated tests cover the logic, but these need the headset. Work through them in order.
+
+**Before you put the headset on**
+
+- [ ] `curl -H "Authorization: Bearer $(cat cv-server/data/api-token)" http://127.0.0.1:8000/v1/health` answers, and `local_detector` is what you expect. A call with no token gets `401`.
+- [ ] `npm run dev` is running, and the Quest and the PC are on the same Wi-Fi.
+- [ ] The Quest opens `https://<PC-IP>:8081/?token=<token>` once, and you accept the certificate. The overlay's CV server line says it is online.
+- [ ] Find your memory server on the overlay. It is listed as "Found ..." and nothing is contacted. Press **Check** and then **Confirm**: only then does the app contact it. Press **Use** to choose it, and only then does your sign-in go to it.
+
+**Starting the session**
+
+- [ ] Enter AR. **No camera permission prompt appears**, and the wrist panel says `Camera: Camera off`.
+- [ ] Set the room name on the overlay (for example `Kitchen`). The wrist panel shows that room.
+- [ ] If the room has no scene data yet, Space Setup starts. After it, the wrist panel's **Planes** count is above zero, and the first rows are the floor and the walls.
+
+**Camera opt-in and the indicator**
+
+- [ ] Press **Right A** with the camera off. The status says `Camera off · N scene pins`. The server log shows **no** `POST /v1/scans`.
+- [ ] Press the **Left stick**. The browser asks for camera access once. Allow it. The wrist panel shows **REC camera · frames go to …** in red.
+- [ ] The indicator stays readable at arm's length, in passthrough, in both light and dark rooms.
+
+**A capture**
+
+- [ ] Press **Right A** while the camera is on. The status reads `N detections · M scene pins`, within about two seconds on Wi-Fi.
+- [ ] Labelled boxes appear in the room, at the surfaces the headset ray hits. With the stub they are placeholders (`chair`, `table`, `cup`) and say so in the server's `detector` field.
+- [ ] Each box is about the size of its placeholder at its distance. Walk back a step and the box gets smaller, not bigger.
+- [ ] The wrist panel lists the room's planes, largest first, with sizes in metres that match the room roughly.
+- [ ] On the PC, `curl http://localhost:8000/v1/scans` lists the scan, and `cv-server/data/scans/<scan_id>/keyframes/kf-0001.jpg` exists. Open it: it is the view you captured.
+
+**Turning it off**
+
+- [ ] Press the **Left stick** again. The REC line goes, and the status says `Camera off`. Press **Right A**: no new request reaches the server.
+- [ ] Turn the camera on, then leave AR (the headset's home button or the Quest app's exit). Re-enter AR: the camera is **off** again, and no permission prompt appears.
+
+**Placement and calibration**
+
+- [ ] If the boxes sit consistently to one side of the object, calibrate the camera FOV on the overlay (see *Connecting to a server*, and the FOV note above), then capture again.
+- [ ] Pins survive a reload of the page, and the room name is still set.
+
+**Room setup (Space Setup)**
+
+- [ ] Enter AR with the camera off, in a room with no scene data: Space Setup does **not** start by itself.
+- [ ] Turn the camera on (Left stick), then press **Right A** in a room with no scene data: Space Setup starts, and the status says to press Right A again when it is done. Nothing is sent to the server on that press.
+- [ ] Complete Space Setup, then press **Right A** again: the capture is sent, with the consent (`consent.camera: true`) on the server's stored scan.
+
+**Meta's libraries in the APK**
+
+The APK bundles Meta's Android libraries (the `com.meta.*` artifacts Gradle resolves for the release runtime). They are used under the Meta Platform Technologies SDK License Agreement, <https://developer.oculus.com/licenses/oculussdk/>, not under this repository's licence. `quest/build.sh` writes their notices to `licences/ANDROID-LIBRARIES.txt`, and the APK keeps them under `assets/licenses/`. The build stops if Gradle lists no Meta library, or any library without a recorded licence.
+
+- [ ] Build the APK with `quest/build.sh`, and confirm the build passes.
+- [ ] Open `ANDROID-LIBRARIES.txt` from the build and confirm it lists the `com.meta.*` libraries with the Meta licence link.
+- [ ] Install the APK on the Quest 3 and confirm it starts, and that `assets/licenses/` holds the notices.
+- [ ] Keep the Meta licence text with any copy of the APK you share. Meta's libraries are not covered by this repository's PolyForm Noncommercial licence.
+
+**What the tests cannot cover**
+
+- [ ] The real detector: run `CV_DETECTOR=groundingdino` on the GPU machine and check that the chair and table boxes land on real furniture.
+- [ ] The Left stick mapping: confirm that pressing it toggles the camera and nothing else changes.
 
 ## Set up: sign in and memory servers
 
@@ -232,6 +378,7 @@ origin — `cv-server` supports this out of the box via `CORS_ALLOW_ORIGINS`
 | Right **B** | 🔵 Blue | **Cycle Model** — Florence → GDino → SAM2 |
 | Left **X** | 🟡 Yellow | **Preview Distance** — Near 1m → Far 3m → Off |
 | Left **Y** | 🟢 Green | **Save & Export** — glTF upload to CV server |
+| Left stick press | — | **Camera on / off** — off when the session starts (see *Run the local server*) |
 | **Trigger** | 🟠 Orange | **Display Mode** — BBox2D → Label3D → Both |
 
 ## Wrist HUD (left controller)
@@ -388,6 +535,7 @@ npm run test:unit    # Vitest unit tests
 npm run test:coverage  # Vitest with v8 coverage and the thresholds in vitest.config.js
 npm run test:e2e     # Playwright + IWER/@iwer/sem (emulated Quest 3) + mock CV server
 npm run test:all
+npm run test:cv-server   # cv-server: the v1 contract and the local scan API on the stub (no GPU, no torch)
 ```
 
 On macOS builds where Playwright's bundled Chromium cannot create a WebGL context, run

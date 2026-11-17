@@ -17,9 +17,11 @@ import { PinSource } from '../../src/spatial/SpatialPin.js';
 
 // Mock @iwsdk/core (CameraSource component token + facing enum)
 const FAKE_CameraSource = Symbol('CameraSource');
+const FAKE_CameraSystem = Symbol('CameraSystem');
 vi.mock('@iwsdk/core', () => ({
   CameraSource: FAKE_CameraSource,
   CameraFacing: { Back: 'back' },
+  CameraSystem: FAKE_CameraSystem,
 }));
 
 // Mock the frame encoder — no canvas / createImageBitmap in node
@@ -55,11 +57,12 @@ function makeWorld({ videoElement = null } = {}) {
 
 const FAKE_VIDEO = { readyState: 4, videoWidth: 1280, videoHeight: 720 };
 
-function makePipeline(cvMock, { videoElement = FAKE_VIDEO } = {}) {
+function makePipeline(cvMock, { videoElement = FAKE_VIDEO, cameraOn = true } = {}) {
   const world = makeWorld({ videoElement });
   const mgr   = new SpatialPinManager();
   const pb    = new PipelineB(world, mgr, cvMock);
   pb.initCameraEntity();
+  if (cameraOn) pb.setCameraOn(true);   // the camera is off by default; these tests need a frame
   return { pb, mgr, world };
 }
 

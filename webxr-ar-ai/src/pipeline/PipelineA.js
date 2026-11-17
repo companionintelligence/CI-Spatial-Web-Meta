@@ -28,7 +28,7 @@ let _frameIndex = 0;
 const _trackIds = new WeakMap();
 let _trackSeq = 0;
 
-function trackIdFor(native, prefix) {
+export function trackIdFor(native, prefix) {
   let id = _trackIds.get(native);
   if (!id) {
     id = `${prefix}-${++_trackSeq}`;

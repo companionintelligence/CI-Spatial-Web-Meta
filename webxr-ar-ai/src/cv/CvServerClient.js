@@ -47,8 +47,20 @@ export class CvServerClient {
   // ── Health ──────────────────────────────────────────────────────────────
 
   async health() {
+    return (await this.healthState()) === 'online';
+  }
+
+  /**
+   * Whether the server answers, and whether it takes this app's token. A 401 means the
+   * server is up but wants a token (none was given, or it is wrong). A network error
+   * rejects, as any request does.
+   * @returns {Promise<'online'|'needs-token'|'offline'>}
+   */
+  async healthState() {
     const res = await this._get('/v1/health');
-    return res.ok;
+    if (res.ok) return 'online';
+    if (res.status === 401) return 'needs-token';
+    return 'offline';
   }
 
   // ── Models ───────────────────────────────────────────────────────────────
@@ -177,12 +189,14 @@ export function videoToBase64Jpeg(videoEl, quality = 0.7) {
  */
 export function describeCvError(err) {
   if (err?.name === 'AbortError') return 'CV server timed out';
+  // Scan data is never sent off this network; the refusal names the host.
+  if (err?.name === 'NonLocalDestinationError') return err.message;
   // fetch() rejects with a TypeError when the server cannot be reached
   // (Chromium: "Failed to fetch"; Firefox: "NetworkError…"; Safari: "Load failed").
   if (err instanceof TypeError && /fetch|network|load failed/i.test(err.message)) {
     return 'CV server unreachable';
   }
-  const status = /^CV server error (\d{3})\b/.exec(String(err?.message ?? ''));
+  const status = /^(?:CV|Scan) server error (\d{3})\b/.exec(String(err?.message ?? ''));
   if (status) return `CV server error ${status[1]}`;
   return 'CV server error';
 }

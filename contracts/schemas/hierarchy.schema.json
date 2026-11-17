@@ -1,0 +1,77 @@
+{
+  "$defs": {
+    "Floor": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "level": {
+          "default": 0,
+          "title": "Level",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Floor",
+      "type": "object"
+    },
+    "Named": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Named",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "PLACE, BUILDING, FLOOR and ROOM. The scan itself is the SCAN level.",
+  "properties": {
+    "place": {
+      "$ref": "#/$defs/Named"
+    },
+    "building": {
+      "$ref": "#/$defs/Named"
+    },
+    "floor": {
+      "$ref": "#/$defs/Floor"
+    },
+    "room": {
+      "$ref": "#/$defs/Named"
+    }
+  },
+  "required": [
+    "place",
+    "building",
+    "floor",
+    "room"
+  ],
+  "title": "Hierarchy",
+  "type": "object"
+}

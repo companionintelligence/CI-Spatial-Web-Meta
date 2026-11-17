@@ -1,0 +1,100 @@
+{
+  "contract_version": "1.2",
+  "scan_id": "scan_00000000000000000000000000000000",
+  "keyframes": [
+    {
+      "keyframe_id": "kf-0001",
+      "client_keyframe_id": "cap-1",
+      "captured_at_ms": 1763300000000,
+      "image": {
+        "format": "jpeg",
+        "width": 64,
+        "height": 36,
+        "file": "keyframes/kf-0001.jpg"
+      },
+      "pose": {
+        "frame": "local-floor",
+        "position": {
+          "x": 0.0,
+          "y": 1.6,
+          "z": 0.5
+        },
+        "quaternion": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0,
+          "w": 1.0
+        }
+      },
+      "intrinsics": {
+        "fx": 38.14,
+        "fy": 38.14,
+        "cx": 32.0,
+        "cy": 18.0
+      },
+      "detection_count": 3
+    }
+  ],
+  "detections": [
+    {
+      "detection_id": "kf-0001-d01",
+      "keyframe_id": "kf-0001",
+      "level": "OBJECT",
+      "label": "chair",
+      "confidence": 0.5,
+      "bbox_cxcywh": [
+        0.5708,
+        0.4656,
+        0.14,
+        0.2
+      ],
+      "cx": 0.5708,
+      "cy": 0.4656,
+      "mask": null,
+      "detector": {
+        "id": "stub",
+        "version": "1"
+      }
+    },
+    {
+      "detection_id": "kf-0001-d02",
+      "keyframe_id": "kf-0001",
+      "level": "OBJECT",
+      "label": "table",
+      "confidence": 0.5,
+      "bbox_cxcywh": [
+        0.7567999999999999,
+        0.6936,
+        0.16,
+        0.2
+      ],
+      "cx": 0.7567999999999999,
+      "cy": 0.6936,
+      "mask": null,
+      "detector": {
+        "id": "stub",
+        "version": "1"
+      }
+    },
+    {
+      "detection_id": "kf-0001-d03",
+      "keyframe_id": "kf-0001",
+      "level": "OBJECT",
+      "label": "cup",
+      "confidence": 0.5,
+      "bbox_cxcywh": [
+        0.3428,
+        0.5216,
+        0.18000000000000002,
+        0.2
+      ],
+      "cx": 0.3428,
+      "cy": 0.5216,
+      "mask": null,
+      "detector": {
+        "id": "stub",
+        "version": "1"
+      }
+    }
+  ]
+}

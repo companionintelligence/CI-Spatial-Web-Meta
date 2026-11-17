@@ -25,11 +25,15 @@ RUN pip install --no-cache-dir \
     einops \
     timm
 
-COPY main.py .
+COPY main.py serve.py ./
+COPY localscan ./localscan
 
-# Weights are volume-mounted at /weights
-VOLUME ["/weights"]
+# Weights are volume-mounted at /weights; scans and the API token live under /data.
+# The container listens on all of its own interfaces, but compose publishes the port to the
+# host's loopback only (cv-server/docker-compose.yml), so the API is not on the LAN.
+ENV CV_DATA_DIR=/data CV_HOST=0.0.0.0
+VOLUME ["/weights", "/data"]
 
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "serve.py"]

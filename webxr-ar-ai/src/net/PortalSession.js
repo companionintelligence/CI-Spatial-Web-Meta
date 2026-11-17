@@ -12,6 +12,8 @@
  */
 
 /** The scopes this app asks for. Matches the Portal's first-party clients. */
+import { sameServer } from './localOnly.js';
+
 export const PORTAL_SCOPE = 'openid profile email';
 
 const LS_SESSION = 'companionScan.portalSession';
@@ -203,6 +205,46 @@ export async function discoverResources({
   // sign-in, and that ends the session just as a 401 does.
   if (res.status === 401 || listing?.portal?.status === 401) clearSession(local);
   return listing;
+}
+
+/**
+ * Check one of the user's memory servers: whether it answers. No credential goes to the
+ * server; the Worker checks the address is on the account, and only then calls it. The app
+ * calls this only after the user confirms they want to contact that server.
+ * @returns {Promise<{ url: string, health: object }>}
+ */
+export async function checkMemoryServer({ session, url, fetchFn = globalThis.fetch, api = '/api' }) {
+  const res = await fetchFn(`${api}/memory/check`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ accessToken: session.accessToken, url }),
+  });
+  if (!res.ok) throw new Error(`That server could not be checked (status ${res.status}).`);
+  return res.json();
+}
+
+/**
+ * The language models of the memory server the user has chosen. The sign-in token goes to
+ * that server and to no other host: `url` must be the server the user chose.
+ * @returns {Promise<{ url: string, llm: object }>}
+ */
+export async function listMemoryModels({
+  session,
+  url,
+  chosenUrl,
+  fetchFn = globalThis.fetch,
+  api = '/api',
+}) {
+  if (!sameServer(url, chosenUrl)) {
+    throw new Error('Only the memory server you chose can receive your sign-in.');
+  }
+  const res = await fetchFn(`${api}/memory/models`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+    body: JSON.stringify({ accessToken: session.accessToken, idToken: session.idToken, url }),
+  });
+  if (!res.ok) throw new Error(`The language models could not be listed (status ${res.status}).`);
+  return res.json();
 }
 
 function readJson(storage, key) {

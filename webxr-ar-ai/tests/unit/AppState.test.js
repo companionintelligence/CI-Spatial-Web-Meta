@@ -45,8 +45,12 @@ describe('AppState — constants', () => {
 });
 
 describe('AppState — initial state', () => {
-  it('starts with Florence model preset', () => {
-    expect(appState.modelPreset).toBe('Florence');
+  it('starts with the Local scan preset (the default)', () => {
+    expect(appState.modelPreset).toBe('Local');
+  });
+
+  it('starts with the camera off', () => {
+    expect(appState.cameraOn).toBe(false);
   });
 
   it('starts with Both display mode', () => {
@@ -68,7 +72,10 @@ describe('AppState — initial state', () => {
 });
 
 describe('AppState — cycleModel()', () => {
-  it('cycles Florence → GDino → SAM2 → Florence', () => {
+  it('cycles Local → Florence → GDino → SAM2 → Local', () => {
+    expect(appState.modelPreset).toBe('Local');
+
+    appState.cycleModel();
     expect(appState.modelPreset).toBe('Florence');
 
     appState.cycleModel();
@@ -78,12 +85,12 @@ describe('AppState — cycleModel()', () => {
     expect(appState.modelPreset).toBe('SAM2');
 
     appState.cycleModel();
-    expect(appState.modelPreset).toBe('Florence');
+    expect(appState.modelPreset).toBe('Local');
   });
 
   it('returns the new preset value', () => {
     const result = appState.cycleModel();
-    expect(result).toBe('GDino');
+    expect(result).toBe('Florence');
   });
 });
 

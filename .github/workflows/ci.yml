@@ -73,7 +73,7 @@ jobs:
           retention-days: 7
 
   cv-server:
-    name: CV server (syntax)
+    name: CV server (compile + tests)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +82,13 @@ jobs:
         with:
           python-version: '3.11'
 
-      # The full server needs torch + model weights; CI just guards that the
-      # module parses and compiles.
+      # The tests run the local scan API on the stub detector: no torch, no GPU,
+      # no model weights. The GPU endpoints in main.py are only compiled here.
+      - name: Install test dependencies
+        run: python -m pip install -r cv-server/requirements-dev.txt
+
       - name: Compile check
-        run: python -m py_compile cv-server/main.py
+        run: python -m py_compile cv-server/main.py cv-server/localscan/*.py
+
+      - name: Contract and local-scan tests
+        run: python -m pytest cv-server/tests

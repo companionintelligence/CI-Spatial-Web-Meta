@@ -4,6 +4,7 @@
  * stubbed; the PKCE challenge is checked against the RFC 7636 test vector.
  */
 import { describe, it, expect, vi } from 'vitest';
+import { checkMemoryServer, listMemoryModels } from '../../src/net/PortalSession.js';
 import {
   authorizeUrl,
   base64url,
@@ -266,5 +267,40 @@ describe('discoverResources', () => {
     const fetchFn = vi.fn(async () => jsonResponse({}, 502));
     await expect(discoverResources({ session: { accessToken: 'a' }, fetchFn, local: memoryStorage() }))
       .rejects.toThrow('Could not look up your servers');
+  });
+});
+
+describe('memory checks and models — the token only where the user chose', () => {
+  const session = { accessToken: 'access-1', idToken: 'id-1' };
+  const reply = (body) => ({ ok: true, status: 200, json: async () => body });
+
+  it('checks a server with the access token only, never the id token', async () => {
+    const fetchFn = vi.fn(async () => reply({ url: 'https://memory.example.com', health: { ok: true } }));
+    await checkMemoryServer({ session, url: 'https://memory.example.com', fetchFn });
+    const body = JSON.parse(fetchFn.mock.calls[0][1].body);
+    expect(body).toEqual({ accessToken: 'access-1', url: 'https://memory.example.com' });
+    expect(fetchFn.mock.calls[0][0]).toBe('/api/memory/check');
+  });
+
+  it('sends the id token for the chosen server', async () => {
+    const fetchFn = vi.fn(async () => reply({ url: 'https://memory.example.com', llm: { ok: true, models: [] } }));
+    await listMemoryModels({
+      session,
+      url: 'https://memory.example.com',
+      chosenUrl: 'https://memory.example.com',
+      fetchFn,
+    });
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body)).toMatchObject({ idToken: 'id-1' });
+  });
+
+  it('refuses to send the id token to a server the user did not choose, and sends nothing', async () => {
+    const fetchFn = vi.fn();
+    await expect(listMemoryModels({
+      session,
+      url: 'https://attacker.example.com',
+      chosenUrl: 'https://memory.example.com',
+      fetchFn,
+    })).rejects.toThrow(/Only the memory server you chose/);
+    expect(fetchFn).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,12 @@
 """
 CV Server — FastAPI inference server for the Companion Scan pipeline.
 
-Endpoints:
+Local scan API (runs without torch or a GPU; see localscan/ and docs/data-contract.md):
+  POST /v1/scans                       capture payload in, detections out
+  POST /v1/scans/{scan_id}/keyframes   more keyframes for a scan
+  GET  /v1/scans/{scan_id}             the stored scan record
+
+GPU endpoints (need torch and the model weights):
   POST /v1/detect   — GroundingDINO object detection
   POST /v1/segment  — Grounded SAM 2 segmentation
   POST /v1/florence — Florence-2 caption + object detection
@@ -27,19 +32,47 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import torch
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
 from pydantic import BaseModel
 
+from localscan import ScanStore, build_router as build_local_scan_router, detector_from_env
+from localscan.security import RequireBearerToken, cors_origins_from_env, load_or_create_token
+from localscan.store import DEFAULT_DATA_DIR
+
+try:  # torch is needed only by the GPU endpoints; the local scan API runs without it
+    import torch
+except ImportError:
+    torch = None
+
 logger = logging.getLogger("cv-server")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s  %(name)s  %(message)s")
 
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-GLTF_STORE = Path(os.getenv("GLTF_STORE", "/tmp/gltf_uploads"))
+
+def _cuda_available() -> bool:
+    return torch is not None and torch.cuda.is_available()
+
+
+def _require_torch() -> None:
+    if torch is None:
+        raise HTTPException(
+            status_code=503,
+            detail="This endpoint needs torch and the model weights (GPU server). "
+                   "The local scan API is /v1/scans and runs without them.",
+        )
+
+
+DEVICE = "cuda" if _cuda_available() else "cpu"
+
+# Everything the server keeps lives on the data volume (CV_DATA_DIR), not in /tmp.
+DATA_DIR = Path(os.getenv("CV_DATA_DIR") or DEFAULT_DATA_DIR)
+GLTF_STORE = Path(os.getenv("GLTF_STORE") or (DATA_DIR / "gltf"))
 GLTF_STORE.mkdir(parents=True, exist_ok=True)
+
+# The API token (see localscan/security.py). Never logged; the file is the only copy.
+API_TOKEN = load_or_create_token(os.environ, DATA_DIR)
 
 # ---------------------------------------------------------------------------
 # Lazy model registry
@@ -133,20 +166,38 @@ class FlorenceRequest(BaseModel):
 
 app = FastAPI(title="Companion Scan CV Server", version="1.0.0")
 
-# The webxr-ar-ai frontend can be hosted elsewhere (e.g. a Cloudflare-deployed
-# instance) and pointed at this server over the public internet, so browser
-# fetches to /v1/* need CORS. Requests carry an `Authorization: Bearer` token
-# rather than cookies, so credentials don't need to be allowed. Defaults to
-# "*" (this server has no auth of its own — anyone who can reach it can
-# already call it); restrict to your deployed frontend's origin(s) with
-# CORS_ALLOW_ORIGINS, comma-separated, if this server is reachable publicly.
-_cors_origins = [o.strip() for o in os.getenv("CORS_ALLOW_ORIGINS", "*").split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Every /v1 route needs the bearer token (added first, so CORS answers outside it).
+app.add_middleware(RequireBearerToken, token=API_TOKEN)
+
+# Browsers get cross-origin access only for the origins listed in CORS_ALLOW_ORIGINS.
+# The default is none: the app is served by the dev proxy, which is same-origin. '*' is refused.
+_cors_origins = cors_origins_from_env(os.environ)
+if _cors_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
+
+
+@app.get("/healthz")
+async def healthz():
+    """Liveness for container healthchecks. Reveals nothing, and needs no token."""
+    return {"status": "ok"}
+
+# Local scan API: one detector per process, chosen by CV_DETECTOR (stub by default).
+_local_detector = None
+
+
+def _local_scan_detector():
+    global _local_detector
+    if _local_detector is None:
+        _local_detector = detector_from_env()
+    return _local_detector
+
+
+app.include_router(build_local_scan_router(ScanStore.from_env(), _local_scan_detector))
 
 
 @app.get("/v1/health")
@@ -154,7 +205,9 @@ async def health():
     return {
         "status": "ok",
         "device": DEVICE,
-        "cuda": torch.cuda.is_available(),
+        "cuda": _cuda_available(),
+        "torch": torch is not None,
+        "local_detector": os.getenv("CV_DETECTOR", "stub").strip().lower(),
     }
 
 
@@ -166,6 +219,9 @@ async def health():
 # and cycle through whatever this returns.
 
 MODEL_REGISTRY = [
+    # The Quest app's default: capture posts keyframes to /v1/scans (stub or GroundingDINO).
+    {"id": "Local", "label": "Local scan", "kind": "detect",
+     "endpoints": ["/v1/scans"]},
     {"id": "Florence", "label": "Florence-2", "kind": "caption+detect",
      "endpoints": ["/v1/florence"]},
     {"id": "GDino", "label": "GroundingDINO", "kind": "detect",
@@ -186,6 +242,7 @@ async def list_models():
 
 @app.post("/v1/detect")
 async def detect(req: DetectRequest):
+    _require_torch()
     try:
         model, transform, predict = _gdino()
         pil_img = _decode_image(req.image)
@@ -223,6 +280,7 @@ async def detect(req: DetectRequest):
 
 @app.post("/v1/segment")
 async def segment(req: SegmentRequest):
+    _require_torch()
     try:
         import numpy as np
 
@@ -269,6 +327,7 @@ async def segment(req: SegmentRequest):
 
 @app.post("/v1/florence")
 async def florence(req: FlorenceRequest):
+    _require_torch()
     try:
         model, processor = _florence()
         pil_img = _decode_image(req.image)

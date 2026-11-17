@@ -230,6 +230,52 @@ sequenceDiagram
 | Signing out clears the session and the chosen memory server | overlay sign-out handler |
 | A CV-server token is sent only to the server it was issued for | `ServerConnection` |
 
+## Local scan (v1)
+
+The room-mapping path. The headset captures keyframes (one camera frame, its pose and
+intrinsics) and the room's planes. A server on the same network runs detection and stores the
+scan under its id. The contract, with units, frames and the mapping to Companion Scan's
+hierarchy (PLACE > BUILDING > FLOOR > ROOM > SCAN > OBJECT), is in
+[docs/data-contract.md](docs/data-contract.md).
+
+```mermaid
+sequenceDiagram
+    actor U as User (Right A)
+    participant PB as PipelineB
+    participant LS as LocalScanClient
+    participant API as cv-server /v1/scans
+    participant DET as Detector (stub | GroundingDINO)
+    participant ST as ScanStore (CV_DATA_DIR)
+
+    Note over PB: camera is off until opted in (Left stick)
+    U->>PB: capture (camera on)
+    PB->>PB: snapshot pose, encode JPEG
+    PB->>LS: keyframe + planes + hierarchy
+    LS->>LS: assertLocalUrl (refuse non-local hosts)
+    LS->>API: POST /v1/scans (first) or /v1/scans/{id}/keyframes
+    API->>API: validate JPEG, declared size, contract
+    API->>DET: detect(keyframe image, index)
+    DET-->>API: labelled boxes (normalised)
+    API->>ST: write keyframe JPEG, scan.json
+    API-->>LS: CaptureResult (keyframes, detections)
+    LS-->>PB: detections in placement shape
+    PB->>PB: ray from capture pose, raycast planes, boxSizeM
+```
+
+| Rule | Where it is enforced |
+|---|---|
+| Camera off at session start, off again on session end | `PipelineB.setCameraOn`, `CompanionScanSystem` session handlers (`src/privacy/capturePolicy.js`) |
+| No microphone | no audio constraint exists; `assertNoAudio`, and a test that scans the source |
+| Scan data only to a local host | `assertLocalUrl` in `LocalScanClient` (`src/net/localOnly.js`) |
+| The server makes no outbound requests | `cv-server/tests/test_local_only.py` |
+| Every `/v1` route needs the bearer token; no cross-origin access by default | `RequireBearerToken` and `cors_origins_from_env` (`cv-server/localscan/security.py`) |
+| The server listens on localhost unless told otherwise | `cv-server/serve.py` (`CV_HOST`), and compose publishes the port to `127.0.0.1` |
+| Keyframes are stored only with the camera consent | `_require_camera_consent` (`cv-server/localscan/api.py`), and `consent` on the request (contract 1.2) |
+| No keyframe leaves the headset without consent | `LocalScanClient.submit` (`webxr-ar-ai/src/scan/LocalScanClient.js`) |
+| Space Setup is started only by a capture press, with the camera on | `roomSetupGate` (`webxr-ar-ai/src/privacy/capturePolicy.js`), `_maybeStartRoomSetup` (`main.js`) |
+| The memory server is checked only when the user confirms, and the sign-in goes only to the chosen one | `memoryCheck` and `memoryModels` (`webxr-ar-ai/src/worker/index.js`), `sameServer` (`webxr-ar-ai/src/net/localOnly.js`), and the confirm step in `DesktopOverlay._checkMemory` |
+| The detector is a switch | `CV_DETECTOR` (`cv-server/localscan/detectors.py`) |
+
 ## Scan schema (`extras.companion_scan`, v1.1)
 
 | Field | Type | Notes |

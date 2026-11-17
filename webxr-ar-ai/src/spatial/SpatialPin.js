@@ -71,6 +71,11 @@ export class SpatialPin {
     this.maskRleJson = null;
     /** @type {string|null} Florence caption */
     this.florenceCaption = null;
+    /**
+     * @type {{w: number, h: number}|null} the detection's box at its placement distance,
+     * in metres (drawn as a labelled frame in the room)
+     */
+    this.boxSizeM = null;
 
     /** @type {number} Unix ms */
     this.createdAt = Date.now();

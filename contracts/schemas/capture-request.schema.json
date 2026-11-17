@@ -1,0 +1,470 @@
+{
+  "$defs": {
+    "Client": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "default": "companion-scan-quest",
+          "maxLength": 64,
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "default": "1.0.0",
+          "maxLength": 32,
+          "title": "Version",
+          "type": "string"
+        },
+        "device": {
+          "default": "meta-quest-3",
+          "maxLength": 64,
+          "title": "Device",
+          "type": "string"
+        },
+        "session_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Session Id"
+        }
+      },
+      "title": "Client",
+      "type": "object"
+    },
+    "Consent": {
+      "additionalProperties": false,
+      "description": "The user's opt-in for camera capture. The server keeps no keyframe without camera=true.",
+      "properties": {
+        "camera": {
+          "title": "Camera",
+          "type": "boolean"
+        },
+        "granted_at": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Granted At"
+        },
+        "recorded_at": {
+          "anyOf": [
+            {
+              "maxLength": 40,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Recorded At"
+        }
+      },
+      "required": [
+        "camera"
+      ],
+      "title": "Consent",
+      "type": "object"
+    },
+    "Extent2": {
+      "additionalProperties": false,
+      "description": "A size or centre on a plane, in plane-local metres (x and z; the plane normal is +y).",
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "z": {
+          "title": "Z",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "z"
+      ],
+      "title": "Extent2",
+      "type": "object"
+    },
+    "Floor": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "level": {
+          "default": 0,
+          "title": "Level",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Floor",
+      "type": "object"
+    },
+    "Hierarchy": {
+      "additionalProperties": false,
+      "description": "PLACE, BUILDING, FLOOR and ROOM. The scan itself is the SCAN level.",
+      "properties": {
+        "place": {
+          "$ref": "#/$defs/Named"
+        },
+        "building": {
+          "$ref": "#/$defs/Named"
+        },
+        "floor": {
+          "$ref": "#/$defs/Floor"
+        },
+        "room": {
+          "$ref": "#/$defs/Named"
+        }
+      },
+      "required": [
+        "place",
+        "building",
+        "floor",
+        "room"
+      ],
+      "title": "Hierarchy",
+      "type": "object"
+    },
+    "ImageIn": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "jpeg",
+          "default": "jpeg",
+          "title": "Format",
+          "type": "string"
+        },
+        "width": {
+          "maximum": 8192,
+          "minimum": 1,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "maximum": 8192,
+          "minimum": 1,
+          "title": "Height",
+          "type": "integer"
+        },
+        "base64": {
+          "minLength": 4,
+          "title": "Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "base64"
+      ],
+      "title": "ImageIn",
+      "type": "object"
+    },
+    "Intrinsics": {
+      "additionalProperties": false,
+      "description": "Pinhole model of the passthrough camera, in pixels of the keyframe image.",
+      "properties": {
+        "fx": {
+          "exclusiveMinimum": 0,
+          "title": "Fx",
+          "type": "number"
+        },
+        "fy": {
+          "exclusiveMinimum": 0,
+          "title": "Fy",
+          "type": "number"
+        },
+        "cx": {
+          "title": "Cx",
+          "type": "number"
+        },
+        "cy": {
+          "title": "Cy",
+          "type": "number"
+        }
+      },
+      "required": [
+        "fx",
+        "fy",
+        "cx",
+        "cy"
+      ],
+      "title": "Intrinsics",
+      "type": "object"
+    },
+    "KeyframeIn": {
+      "additionalProperties": false,
+      "description": "One camera frame with the headset pose it was taken from (capture-time, not send-time).",
+      "properties": {
+        "client_keyframe_id": {
+          "anyOf": [
+            {
+              "maxLength": 64,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Keyframe Id"
+        },
+        "captured_at_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Captured At Ms"
+        },
+        "image": {
+          "$ref": "#/$defs/ImageIn"
+        },
+        "pose": {
+          "$ref": "#/$defs/Pose"
+        },
+        "intrinsics": {
+          "$ref": "#/$defs/Intrinsics"
+        }
+      },
+      "required": [
+        "image",
+        "pose",
+        "intrinsics"
+      ],
+      "title": "KeyframeIn",
+      "type": "object"
+    },
+    "Named": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 120,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "Named",
+      "type": "object"
+    },
+    "Plane": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "maxLength": 40,
+          "minLength": 1,
+          "title": "Label",
+          "type": "string"
+        },
+        "orientation": {
+          "anyOf": [
+            {
+              "enum": [
+                "horizontal",
+                "vertical"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Orientation"
+        },
+        "pose": {
+          "$ref": "#/$defs/Pose"
+        },
+        "center": {
+          "$ref": "#/$defs/Extent2"
+        },
+        "size": {
+          "$ref": "#/$defs/Extent2"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "pose",
+        "center",
+        "size"
+      ],
+      "title": "Plane",
+      "type": "object"
+    },
+    "Pose": {
+      "additionalProperties": false,
+      "description": "A headset or plane pose in the WebXR local-floor frame: metres, Y up, right-handed.",
+      "properties": {
+        "frame": {
+          "const": "local-floor",
+          "default": "local-floor",
+          "title": "Frame",
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/$defs/Vec3"
+        },
+        "quaternion": {
+          "$ref": "#/$defs/Quaternion"
+        }
+      },
+      "required": [
+        "position",
+        "quaternion"
+      ],
+      "title": "Pose",
+      "type": "object"
+    },
+    "Quaternion": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "title": "Z",
+          "type": "number"
+        },
+        "w": {
+          "title": "W",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z",
+        "w"
+      ],
+      "title": "Quaternion",
+      "type": "object"
+    },
+    "Vec3": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "title": "Z",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "title": "Vec3",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Capture payload: the first request of a scan. Planes and keyframes may be empty.",
+  "properties": {
+    "hierarchy": {
+      "$ref": "#/$defs/Hierarchy"
+    },
+    "client": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Client"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "consent": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Consent"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "planes": {
+      "items": {
+        "$ref": "#/$defs/Plane"
+      },
+      "maxItems": 256,
+      "title": "Planes",
+      "type": "array"
+    },
+    "keyframes": {
+      "items": {
+        "$ref": "#/$defs/KeyframeIn"
+      },
+      "maxItems": 8,
+      "title": "Keyframes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "hierarchy"
+  ],
+  "title": "ScanCreate",
+  "type": "object"
+}

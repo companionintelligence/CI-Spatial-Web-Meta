@@ -38,13 +38,18 @@ import {
 import { cssVar } from './theme.js';
 import {
   beginSignIn,
+  checkMemoryServer,
   clearSession,
   discoverResources,
   fetchIdentity,
   getSession,
+  listMemoryModels,
 } from '../net/PortalSession.js';
-import { firstRunStatus, FTUE_STEP } from '../net/ftueModel.js';
+import { firstRunStatus, FTUE_STEP, hostOf } from '../net/ftueModel.js';
 import { describeArError } from '../app/questApp.js';
+import { cameraToggleLabel, recordingIndicator } from '../privacy/capturePolicy.js';
+import { loadRoomName, saveRoomName } from '../scan/hierarchy.js';
+import { summarisePlanes } from '../scan/planes.js';
 
 const HEALTH_POLL_MS = 8000;
 const HEALTH_MAX_OFFLINE_MS = 60_000;
@@ -61,11 +66,25 @@ export function healthDelayMs(failures) {
   return Math.min(HEALTH_MAX_OFFLINE_MS, HEALTH_POLL_MS * 2 ** Math.min(failures, 4));
 }
 
+/** The CV server row's badge for each health state (see CvServerClient.healthState). */
+const CV_HEALTH_BADGE = {
+  online: '<span class="co-badge ok">Online</span>',
+  'needs-token': '<span class="co-badge error">Needs token</span>',
+  offline: '<span class="co-badge error">Offline</span>',
+};
+
+/** The note under that row. Scene pins and GLB export still work without a CV server. */
+const CV_HEALTH_NOTE = {
+  'needs-token': 'The CV server is up but wants its token. Open the app once with ?token=<token> (see the README).',
+  offline: 'No CV server answered. Scene pins and GLB export still work.',
+};
+
 const LEGEND = [
   ['Right A',  'Capture (both pipelines)'],
   ['Right B',  'Cycle CV model (from the server registry)'],
   ['Left X',   'Preview distance — 1 m → 3 m → Off'],
   ['Left Y',   'Save & Export (download + upload)'],
+  ['Left stick', 'Camera on or off (off at the start of each session)'],
   ['Trigger',  'Display mode — BBox2D → Label3D → Both'],
 ];
 
@@ -161,13 +180,14 @@ export class DesktopOverlay {
    * @param {() => Promise<unknown>} [deps.onEnterAr]  starts the AR session; the Enter AR
    *   button is shown only with it (the Quest app, which has no browser Enter AR)
    */
-  constructor({ pinManager, cvClient, onDownload, onClear = null, connection = null, onEnterAr = null }) {
+  constructor({ pinManager, cvClient, onDownload, onClear = null, connection = null, onEnterAr = null, onToggleCamera = null }) {
     this.pinManager = pinManager;
     this.cvClient   = cvClient;
     this.onDownload = onDownload;
     this.onClear    = onClear;
     this.connection = connection;
     this.onEnterAr  = onEnterAr;
+    this.onToggleCamera = onToggleCamera;
     this._root       = null;
     this._healthTimer = 0;
     this._healthFailures = 0;
@@ -189,6 +209,7 @@ export class DesktopOverlay {
       <img class="co-lockup co-lockup-dark" src="/brand/lockup-dark.svg" alt="" aria-hidden="true" />
       <h1>Companion Scan Quest</h1>
       <div class="co-sub">Quest 3 world mapper — put on the headset and enter AR</div>
+      <div id="co-rec" class="co-badge error" hidden></div>
       <div class="co-row" id="co-enter-ar-row">
         <button id="co-enter-ar">Enter AR</button>
       </div>
@@ -199,6 +220,7 @@ export class DesktopOverlay {
         <div id="co-ftue-detail" class="co-note"></div>
         <div class="co-row co-ftue-actions">
           <button id="co-ftue-primary">Sign in with Companion Intelligence</button>
+          <button id="co-ftue-check" hidden>Check this server</button>
           <button id="co-ftue-use" hidden>Use this memory server</button>
         </div>
       </div>
@@ -236,6 +258,26 @@ export class DesktopOverlay {
         </div>
         <div id="co-hfov-note" class="co-note"></div>
       </div>
+      <div class="co-section" id="co-camera-section">
+        <div class="co-brand">Camera</div>
+        <div class="co-row">
+          <span id="co-camera-state" class="co-badge info">Camera off</span>
+          <button id="co-camera-toggle">Turn camera on</button>
+        </div>
+        <div class="co-note">Off until you turn it on. While it is on, frames go only to the local scan server and the headset shows a red REC line. The Left stick also toggles it in the headset.</div>
+      </div>
+      <div class="co-section" id="co-room-section">
+        <div class="co-brand">Room</div>
+        <div class="co-row">
+          <label class="co-label" for="co-room">Name</label>
+          <input id="co-room" type="text" maxlength="120" aria-label="Room name" />
+          <button id="co-room-save">Save</button>
+        </div>
+        <div id="co-room-note" class="co-note"></div>
+        <div id="co-scan" class="co-note"></div>
+        <div class="co-brand">Planes</div>
+        <ul id="co-planes" class="co-note" style="margin: 0; padding-left: 18px;"></ul>
+      </div>
       <div class="co-section">
         <table>${LEGEND.map(([k, v]) => `<tr><td class="co-key">${k}</td><td>${v}</td></tr>`).join('')}</table>
       </div>
@@ -269,6 +311,8 @@ export class DesktopOverlay {
     this._initConnection();
     this._initCalibration();
     this._initFirstRun();
+    this._initCamera();
+    this._initRoom();
 
     // ── Live data ─────────────────────────────────────────────────────────
     const refreshPins = () => this._refreshPins();
@@ -278,8 +322,14 @@ export class DesktopOverlay {
 
     appState.subscribe((field) => {
       if (field === 'status') this._refreshStatus();
+      if (field === 'cameraOn') this._refreshCamera();
+      if (field === 'planes') this._refreshPlanes();
+      if (field === 'scan') this._refreshScan();
     });
 
+    this._refreshCamera();
+    this._refreshPlanes();
+    this._refreshScan();
     this._checkXrSupport();
     this._checkHealth();
 
@@ -402,6 +452,7 @@ export class DesktopOverlay {
     this._discovery = null;
     this._root.querySelector('#co-ftue-primary').addEventListener('click', () => this._onFtuePrimary());
     this._root.querySelector('#co-ftue-use').addEventListener('click', () => this._useMemory());
+    this._root.querySelector('#co-ftue-check').addEventListener('click', () => this._checkMemory());
 
     this._refreshFtue();
     if (this._session) this._autoDiscover();
@@ -453,6 +504,16 @@ export class DesktopOverlay {
     const candidate = status.memory?.url && status.memory.health?.ok && status.step !== FTUE_STEP.READY;
     use.hidden = !candidate;
     if (candidate) use.textContent = `Use ${status.memory.name}`;
+
+    // A server the Portal lists but nothing has contacted yet: the user checks it first.
+    const check = this._root.querySelector('#co-ftue-check');
+    const unchecked = Boolean(status.memory?.url) && status.memory.health === null;
+    check.hidden = !unchecked;
+    if (unchecked) {
+      check.textContent = this._checkConfirmFor === status.memory.url
+        ? `Confirm: contact ${hostOf(status.memory.url)}`
+        : `Check ${status.memory.name}`;
+    }
     this._refreshConnStatus();
   }
 
@@ -478,6 +539,36 @@ export class DesktopOverlay {
     this._refreshFtue();
   }
 
+  /**
+   * Checking a memory server contacts it, so the first press only asks and the second
+   * confirms. The check sends no credential to the server; it asks only whether it answers.
+   */
+  async _checkMemory() {
+    const memory = this._firstRun().memory;
+    if (!memory?.url || !this._session || memory.health !== null) return;
+    if (this._checkConfirmFor !== memory.url) {
+      this._checkConfirmFor = memory.url;
+      appState.setStatus(`Checking contacts ${hostOf(memory.url)}. Press Confirm to go ahead.`, 'warn');
+      this._refreshFtue();
+      return;
+    }
+    this._checkConfirmFor = null;
+    this._setFtueBusy(true);
+    try {
+      const answer = await checkMemoryServer({ session: this._session, url: memory.url });
+      this._mergeMemory(memory.url, { health: answer.health });
+      appState.setStatus(
+        answer.health.ok ? `${memory.name} answered` : `${memory.name} did not answer`,
+        answer.health.ok ? 'ok' : 'warn',
+      );
+    } catch (err) {
+      appState.setStatus(err?.message ?? String(err), 'error');
+    } finally {
+      this._setFtueBusy(false);
+      this._refreshFtue();
+    }
+  }
+
   _useMemory() {
     const memory = this._firstRun().memory;
     if (!memory?.url || !memory.health?.ok) return;
@@ -488,6 +579,35 @@ export class DesktopOverlay {
       appState.setStatus(err.message, 'error');
     }
     this._refreshFtue();
+    this._loadModels(memory);
+  }
+
+  /**
+   * The language models of the server just chosen. The sign-in goes to that server only:
+   * listMemoryModels refuses any other address.
+   */
+  async _loadModels(memory) {
+    if (!this._session || memory.llm) return;
+    try {
+      const answer = await listMemoryModels({
+        session: this._session,
+        url: memory.url,
+        chosenUrl: this.connection?.getMemoryUrl?.() ?? '',
+      });
+      this._mergeMemory(memory.url, { llm: answer.llm });
+    } catch {
+      this._mergeMemory(memory.url, { llm: { ok: false, status: 0, models: [] } });
+    }
+    this._refreshFtue();
+  }
+
+  /** Replace one server's entry in the discovery result, found by its address. */
+  _mergeMemory(url, patch) {
+    if (!this._discovery?.memory) return;
+    this._discovery = {
+      ...this._discovery,
+      memory: this._discovery.memory.map((entry) => (entry.url === url ? { ...entry, ...patch } : entry)),
+    };
   }
 
   _setFtueBusy(busy) {
@@ -554,22 +674,97 @@ export class DesktopOverlay {
   async _checkHealth() {
     const el = this._root?.querySelector('#co-cv-status');
     if (!el) return;
-    let online = false;
+    let state = 'offline';
     try {
-      online = await this.cvClient.health();
+      state = await this.cvClient.healthState();
     } catch {
-      online = false;
+      state = 'offline';
     }
+    const online = state === 'online';
     this._healthFailures = online ? 0 : this._healthFailures + 1;
-    el.innerHTML = online
-      ? '<span class="co-badge ok">Online</span>'
-      : '<span class="co-badge error">Offline</span>';
+    el.innerHTML = CV_HEALTH_BADGE[state] ?? CV_HEALTH_BADGE.offline;
     const note = this._root.querySelector('#co-cv-note');
-    if (note) note.hidden = online;
+    if (note) {
+      note.hidden = online;
+      const text = note.querySelector('.co-note');
+      if (text) text.textContent = CV_HEALTH_NOTE[state] ?? CV_HEALTH_NOTE.offline;
+    }
 
     // One pending check at a time: a manual check (after Save) reschedules too.
     clearTimeout(this._healthTimer);
     this._healthTimer = setTimeout(() => this._checkHealth(), healthDelayMs(this._healthFailures));
+  }
+
+  // ── Camera, room and planes ───────────────────────────────────────────────
+
+  _initCamera() {
+    const section = this._root.querySelector('#co-camera-section');
+    if (!this.onToggleCamera) {
+      section.remove();
+      return;
+    }
+    this._root.querySelector('#co-camera-toggle').addEventListener('click', () => this.onToggleCamera());
+  }
+
+  _refreshCamera() {
+    if (!this._root) return;
+    const indicator = recordingIndicator({
+      cameraOn: appState.cameraOn,
+      destination: globalThis.location?.host ?? '',
+    });
+    const state = this._root.querySelector('#co-camera-state');
+    if (state) {
+      state.textContent = indicator.text;
+      state.className = `co-badge ${indicator.active ? 'error' : 'info'}`;
+    }
+    const toggle = this._root.querySelector('#co-camera-toggle');
+    if (toggle) toggle.textContent = cameraToggleLabel(appState.cameraOn);
+    const rec = this._root.querySelector('#co-rec');
+    if (rec) {
+      rec.hidden = !indicator.active;
+      rec.textContent = indicator.text;
+    }
+  }
+
+  _initRoom() {
+    const input = this._root.querySelector('#co-room');
+    input.value = loadRoomName(getLocalStorage());
+    this._root.querySelector('#co-room-save').addEventListener('click', () => this._saveRoom(input.value));
+  }
+
+  _saveRoom(raw) {
+    try {
+      const name = saveRoomName(raw, getLocalStorage());
+      this._root.querySelector('#co-room').value = name;
+      this._note('#co-room-note', `Saved. The next scan is filed under "${name}".`, 'ok');
+    } catch (err) {
+      this._note('#co-room-note', err.message, 'error');
+    }
+  }
+
+  /** The room's planes, largest first. Names are set with textContent, never as HTML. */
+  _refreshPlanes() {
+    const list = this._root?.querySelector('#co-planes');
+    if (!list) return;
+    const rows = summarisePlanes(appState.planes, 8);
+    const more = appState.planes.length - rows.length;
+    const items = rows.length
+      ? rows.map((row) => row.text)
+      : ['No planes yet. They appear once the headset has scanned the room.'];
+    if (more > 0) items.push(`+${more} more`);
+    list.replaceChildren(...items.map((text) => {
+      const li = document.createElement('li');
+      li.textContent = text;
+      return li;
+    }));
+  }
+
+  _refreshScan() {
+    const el = this._root?.querySelector('#co-scan');
+    if (!el) return;
+    el.textContent = appState.scan
+      ? `Last scan ${appState.scan.id} · ${appState.scan.detections} detections`
+      : 'No scan yet. Turn the camera on, then press Right A to capture a keyframe.';
   }
 
   _refreshPins() {

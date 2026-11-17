@@ -85,6 +85,15 @@ export function firstRunStatus({ signedIn, identity = null, discovery = null, me
 
   const chosen = servers.find((server) => server.url === memoryUrl) ?? null;
   if (chosen) {
+    if (chosen.health === null) {
+      return {
+        step: FTUE_STEP.FIND,
+        tone: 'info',
+        title: `Check ${chosen.name} before you use it`,
+        detail: `Checking contacts ${hostOf(chosen.url)}. Only the server you choose receives your sign-in.`,
+        memory: chosen,
+      };
+    }
     if (chosen.health?.ok) {
       return { step: FTUE_STEP.READY, tone: 'ok', title: `Using ${chosen.name}`, detail: modelsLine(chosen), memory: chosen };
     }
@@ -109,6 +118,16 @@ export function firstRunStatus({ signedIn, identity = null, discovery = null, me
   }
 
   const first = servers[0];
+  if (first.health === null) {
+    // Listed by the Portal but not yet checked. Nothing has been contacted.
+    return {
+      step: FTUE_STEP.FIND,
+      tone: 'info',
+      title: `Found ${first.name}`,
+      detail: `Check it to see whether it answers. Checking contacts ${hostOf(first.url)}.`,
+      memory: first,
+    };
+  }
   return {
     step: FTUE_STEP.FIND,
     tone: 'warn',
@@ -118,9 +137,20 @@ export function firstRunStatus({ signedIn, identity = null, discovery = null, me
   };
 }
 
+/** The host a server address names, for the copy that says what a check contacts. */
+export function hostOf(url) {
+  try {
+    return new URL(String(url)).host;
+  } catch {
+    return 'an unknown address';
+  }
+}
+
 /** What the language-model check found, in one plain sentence. */
 export function modelsLine(server) {
-  if (!server.llm?.ok) {
+  // Listed only once the server has been chosen: the sign-in is sent to it then, not before.
+  if (!server.llm) return 'Its language models are listed once you use it.';
+  if (!server.llm.ok) {
     return 'Its language models need a sign-in the server accepts.';
   }
   const models = Array.isArray(server.llm.models) ? server.llm.models : [];

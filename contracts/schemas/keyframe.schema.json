@@ -1,0 +1,194 @@
+{
+  "$defs": {
+    "ImageIn": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "jpeg",
+          "default": "jpeg",
+          "title": "Format",
+          "type": "string"
+        },
+        "width": {
+          "maximum": 8192,
+          "minimum": 1,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "maximum": 8192,
+          "minimum": 1,
+          "title": "Height",
+          "type": "integer"
+        },
+        "base64": {
+          "minLength": 4,
+          "title": "Base64",
+          "type": "string"
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "base64"
+      ],
+      "title": "ImageIn",
+      "type": "object"
+    },
+    "Intrinsics": {
+      "additionalProperties": false,
+      "description": "Pinhole model of the passthrough camera, in pixels of the keyframe image.",
+      "properties": {
+        "fx": {
+          "exclusiveMinimum": 0,
+          "title": "Fx",
+          "type": "number"
+        },
+        "fy": {
+          "exclusiveMinimum": 0,
+          "title": "Fy",
+          "type": "number"
+        },
+        "cx": {
+          "title": "Cx",
+          "type": "number"
+        },
+        "cy": {
+          "title": "Cy",
+          "type": "number"
+        }
+      },
+      "required": [
+        "fx",
+        "fy",
+        "cx",
+        "cy"
+      ],
+      "title": "Intrinsics",
+      "type": "object"
+    },
+    "Pose": {
+      "additionalProperties": false,
+      "description": "A headset or plane pose in the WebXR local-floor frame: metres, Y up, right-handed.",
+      "properties": {
+        "frame": {
+          "const": "local-floor",
+          "default": "local-floor",
+          "title": "Frame",
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/$defs/Vec3"
+        },
+        "quaternion": {
+          "$ref": "#/$defs/Quaternion"
+        }
+      },
+      "required": [
+        "position",
+        "quaternion"
+      ],
+      "title": "Pose",
+      "type": "object"
+    },
+    "Quaternion": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "title": "Z",
+          "type": "number"
+        },
+        "w": {
+          "title": "W",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z",
+        "w"
+      ],
+      "title": "Quaternion",
+      "type": "object"
+    },
+    "Vec3": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "title": "Z",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "title": "Vec3",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One camera frame with the headset pose it was taken from (capture-time, not send-time).",
+  "properties": {
+    "client_keyframe_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Client Keyframe Id"
+    },
+    "captured_at_ms": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Captured At Ms"
+    },
+    "image": {
+      "$ref": "#/$defs/ImageIn"
+    },
+    "pose": {
+      "$ref": "#/$defs/Pose"
+    },
+    "intrinsics": {
+      "$ref": "#/$defs/Intrinsics"
+    }
+  },
+  "required": [
+    "image",
+    "pose",
+    "intrinsics"
+  ],
+  "title": "KeyframeIn",
+  "type": "object"
+}
