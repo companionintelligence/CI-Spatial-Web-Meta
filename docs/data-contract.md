@@ -2,7 +2,8 @@
 
 The headset captures a room and posts it to a scan server on the same network. This
 document is the contract for that exchange: the scan, the keyframe, the detection
-(the OBJECT level), and the planes and hierarchy they sit in. It is version `1.0`.
+(the OBJECT level), and the planes and hierarchy they sit in. It is version `1.2`.
+[What changed](#change-log) since 1.0 is listed at the end.
 
 The machine-readable copies are in [`contracts/`](../contracts/):
 
@@ -86,6 +87,20 @@ Who sent the scan, and from which headset session. Optional.
 | `device` | `meta-quest-3` |
 | `session_id` | the headset session (a UUID), used to tell sessions apart |
 
+### Consent
+
+The user's opt-in for the camera, as the headset records it. A keyframe is a camera frame,
+so the server keeps one only when the request carries `consent.camera: true`.
+
+| Field | Notes |
+|---|---|
+| `camera` | `true` when the camera was on for this capture. The headset sends `null` while it is off |
+| `granted_at` | when the user turned the camera on in this session (ISO 8601), from the headset clock |
+| `recorded_at` | when the server accepted the keyframes (ISO 8601), set by the server and kept with the scan |
+
+Planes need no consent: they are scene geometry, not camera frames. A scan made of planes
+alone is accepted without `consent`.
+
 ### Plane
 
 A surface the headset's scene understanding found: a floor, a wall, a table top.
@@ -139,7 +154,8 @@ keyframe's pose and a raycast against the planes.
 
 | Field | Notes |
 |---|---|
-| `contract_version` | `"1.0"` |
+| `contract_version` | `"1.2"` |
+| `consent` | the Consent above, or null when the scan has no keyframes |
 | `scan_id` | server-issued |
 | `created_at`, `updated_at` | server time, UTC, ISO 8601 |
 | `hierarchy` | the Hierarchy above |
@@ -156,17 +172,32 @@ On disk, the server stores `<CV_DATA_DIR>/scans/<scan_id>/scan.json` and
 
 | Method and path | Body | Returns |
 |---|---|---|
-| `POST /v1/scans` | capture payload: `hierarchy`, `client`, `planes`, `keyframes` | `201` with a `CaptureResult` (the new keyframes and detections, and the `scan_id`) |
-| `POST /v1/scans/{scan_id}/keyframes` | `keyframes` (1 to 8), and `planes` (replaces the stored planes when present) | `200` with a `CaptureResult` for the keyframes added |
+| `POST /v1/scans` | capture payload: `hierarchy`, `client`, `consent`, `planes`, `keyframes` | `201` with a `CaptureResult` (the new keyframes and detections, and the `scan_id`) |
+| `POST /v1/scans/{scan_id}/keyframes` | `keyframes` (1 to 8), `consent`, and `planes` (replaces the stored planes when present) | `200` with a `CaptureResult` for the keyframes added |
 | `GET /v1/scans/{scan_id}` | none | the stored Scan record |
 | `GET /v1/scans` | none | summaries, newest first: `scan_id`, `created_at`, `room`, counts |
 | `GET /v1/health` | none | includes `local_detector` (`stub` or `groundingdino`) |
+| `GET /healthz` | none | `{"status": "ok"}`, for container healthchecks. Nothing else |
 
-Errors: `404` for an unknown scan (the headset then starts a new one), `413` for an
-image over 8 MB, `422` for a payload that does not match the contract (a bad base64,
-a non-JPEG image, or a declared size that differs from the image), `503` when the
-configured detector cannot run (for example GroundingDINO is not installed), with the
-reason in `detail`.
+Errors: `401` for a missing or wrong token (with `WWW-Authenticate: Bearer`), `403` when
+a request carries keyframes without `consent.camera: true` (nothing is stored), `404` for
+an unknown scan (the headset then starts a new one), `413` for an image over 8 MB, `422`
+for a payload that does not match the contract (a bad base64, a non-JPEG image, or a
+declared size that differs from the image), `503` when the configured detector cannot run
+(for example GroundingDINO is not installed), with the reason in `detail`.
+
+## Access
+
+Every `/v1` request needs `Authorization: Bearer <token>`. The token is `CV_API_TOKEN` when
+that is set (at least 24 characters). Otherwise the server creates one on its first start,
+in `CV_DATA_DIR/api-token` with mode `0600`. The token is never logged and never committed.
+This applies to the glTF endpoints and to the detection endpoints as well. `/healthz` is the
+only route that needs no token.
+
+Browsers get cross-origin access only for the origins in `CORS_ALLOW_ORIGINS`, which is empty
+by default. `*` is refused. The app is served by the dev proxy, so it is same-origin and needs
+no CORS. The server listens on `127.0.0.1` unless `CV_HOST` says otherwise (`python serve.py`),
+and the Docker port is published to the host's loopback only.
 
 ## Worked example
 
@@ -181,8 +212,14 @@ stub detector. The test suite checks that the server reproduces the result exact
   refuses any other host before it sends anything.
 - The camera is off until someone turns it on in the session. While it is on, the headset
   shows a red REC line. Turning it off, or leaving AR, stops the stream.
+- Keyframes are camera frames. The headset sends one only while the camera is on, with its
+  consent; the server refuses one without `consent.camera: true` and stores nothing for it.
+- The headset starts the room scan (Space Setup) only from a capture press, with the camera
+  on, in a room with no scene data, once per session. It is never started by itself.
 - The server makes no outbound connections, and the stub detector needs no model. A test
   checks both.
+- The API token guards every `/v1` route, so a process on the network cannot use the server
+  without it.
 
 ## Mapping to Companion Scan
 
@@ -205,3 +242,13 @@ things differently. The mapping for a later sync:
   so a new client must send only what the server version accepts.
 - Any other change bumps `contract_version`, and the server answers requests for the
   version it knows.
+
+## Change log
+
+- **1.2** (this version). Adds `consent` (camera opt-in) to the capture and append requests
+  and to the stored scan. Keyframes without `consent.camera: true` are refused with `403`.
+  Every `/v1` route requires the bearer token, `/healthz` is added for healthchecks, and
+  cross-origin access is off unless `CORS_ALLOW_ORIGINS` lists origins. The glTF store and
+  the scans live on the data volume. Version 1.1 was never released.
+- **1.0**. The first version: hierarchy, planes, keyframes with pose and intrinsics,
+  detections as OBJECTs, and the scan record.

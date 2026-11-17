@@ -10,7 +10,8 @@ Local Docker server providing AI inference for the Companion Scan pipeline.
 | POST | `/v1/scans/{scan_id}/keyframes` | Local scan: more keyframes for an existing scan |
 | GET | `/v1/scans/{scan_id}` | Local scan: the stored scan record |
 | GET | `/v1/scans` | Local scan: summaries, newest first |
-| GET | `/v1/health` | Health / readiness check (includes `local_detector`) |
+| GET | `/v1/health` | Health / readiness check (includes `local_detector`). Needs the token |
+| GET | `/healthz` | Liveness for container healthchecks. No token, reveals nothing |
 | POST | `/v1/detect` | GroundingDINO object detection |
 | POST | `/v1/segment` | Grounded SAM 2 segmentation |
 | POST | `/v1/florence` | Florence-2 caption + OD |
@@ -84,7 +85,7 @@ Run it without a GPU (the stub):
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
-CV_DETECTOR=stub uvicorn main:app --host 0.0.0.0 --port 8000
+CV_DETECTOR=stub python serve.py        # 127.0.0.1:8000
 ```
 
 Run the real detector, with the weights in `weights/`:
@@ -92,13 +93,29 @@ Run the real detector, with the weights in `weights/`:
 ```bash
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 pip install groundingdino-py
-CV_DETECTOR=groundingdino GDINO_WEIGHTS=$PWD/weights/groundingdino_swint_ogc.pth \
-  uvicorn main:app --host 0.0.0.0 --port 8000
+CV_DETECTOR=groundingdino GDINO_WEIGHTS=$PWD/weights/groundingdino_swint_ogc.pth python serve.py
 ```
 
 With Docker, `docker compose up --build` builds with `CV_DETECTOR=groundingdino` by default.
 Set `CV_DETECTOR=stub` in the environment to run without the weights. Scans persist in
 `./data` on the host.
+
+## Access
+
+- **Token.** Every `/v1` route needs `Authorization: Bearer <token>`, and the glTF and detection
+  routes are included. The token is `CV_API_TOKEN` when set (at least 24 characters). Otherwise
+  the server creates one at `CV_DATA_DIR/api-token` (mode `0600`) on its first start, and reuses
+  it after that. It is never logged. `GET /healthz` is the only route without the token.
+- **Cross-origin.** None by default. `CORS_ALLOW_ORIGINS` takes explicit origins
+  (`https://webxr.example.com`, comma-separated). `*` is refused, and an origin with a path is refused.
+- **Address.** `serve.py` listens on `127.0.0.1` unless `CV_HOST` or `--host` says otherwise. The
+  Docker image listens on all of its own interfaces, and compose publishes port 8000 to the host's
+  loopback only (`127.0.0.1:8000`).
+- **Storage.** Scans, glTF exports and the token live under `CV_DATA_DIR` (`/data` in Docker, so
+  they sit on a volume). Nothing is kept in `/tmp`. `GLTF_STORE` can still point elsewhere on purpose.
+
+Read the token with `cat cv-server/data/api-token` (or from `CV_API_TOKEN` in your environment),
+and give it to the app once, as `?token=` on the app's address.
 
 Requests are validated against the contract. Unknown fields, a JPEG whose size differs from
 the declared size, and a non-JPEG image all get `422`. The server makes no outbound
