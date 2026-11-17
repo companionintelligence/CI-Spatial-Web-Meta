@@ -187,34 +187,26 @@ describe('POST /api/discover', () => {
     expect(body).toEqual({ portal: { ok: false, status: 403 }, memory: [] });
   });
 
-  it('lists the memory server, checks its health and reads its models', async () => {
+  it('lists the memory servers without contacting them or sending any token to them', async () => {
     fetchMock = portalRouter([
       [`${PORTAL}/api/users/me/apps`, () => json({
         apps: [{ slug: 'ci-memory', url: 'https://memory.example.com', deviceName: 'Living room Core' }],
       })],
-      ['https://memory.example.com/api/health', () => json({ status: 'ok', portalAuthEnabled: true, apiVersion: 1 })],
-      ['https://memory.example.com/api/llm/models', () => json([
-        { name: 'qwen-vl', vision: true, tools: true },
-        { model: 'llama', tools: true },
-      ])],
     ]);
     vi.stubGlobal('fetch', fetchMock);
 
     const body = await (await post('/api/discover', { accessToken: 'a', idToken: 'id-1' })).json();
 
     expect(body.portal).toEqual({ ok: true, status: 200 });
-    expect(body.memory).toHaveLength(1);
-    const [memory] = body.memory;
-    expect(memory.name).toBe('Living room Core');
-    expect(memory.url).toBe('https://memory.example.com');
-    expect(memory.health).toEqual({ ok: true, status: 200, portalAuthEnabled: true, apiVersion: 1 });
-    expect(memory.llm.ok).toBe(true);
-    expect(memory.llm.models).toEqual([
-      { id: 'qwen-vl', vision: true, tools: true, thinking: false },
-      { id: 'llama', vision: false, tools: true, thinking: false },
-    ]);
-    const modelsCall = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/api/llm/models'));
-    expect(modelsCall[1].headers.Authorization).toBe('Bearer id-1');
+    expect(body.memory).toEqual([{
+      name: 'Living room Core',
+      url: 'https://memory.example.com',
+      checked: false,
+      health: null,
+      llm: null,
+    }]);
+    const contacted = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(contacted.some((url) => url.startsWith('https://memory.example.com'))).toBe(false);
   });
 
   it('never calls an insecure memory address', async () => {
@@ -227,26 +219,94 @@ describe('POST /api/discover', () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).startsWith('http://memory'))).toBe(false);
   });
 
-  it('skips the models call without an id token, and reports an unreachable server', async () => {
-    fetchMock = portalRouter([
-      [`${PORTAL}/api/users/me/apps`, () => json({ apps: [{ url: 'https://gone.example.com' }] })],
-      ['https://gone.example.com/api/health', () => { throw new TypeError('Failed to fetch'); }],
-    ]);
-    vi.stubGlobal('fetch', fetchMock);
-    const body = await (await post('/api/discover', { accessToken: 'a' })).json();
-    expect(body.memory[0].health).toEqual({ ok: false, status: 0, portalAuthEnabled: null, apiVersion: null });
-    expect(body.memory[0].llm).toBeNull();
-  });
-
   it('looks at no more than three memory servers', async () => {
     const apps = [1, 2, 3, 4, 5].map((i) => ({ url: `https://m${i}.example.com` }));
     fetchMock = portalRouter([
       [`${PORTAL}/api/users/me/apps`, () => json({ apps })],
-      ['https://m', () => json({ status: 'ok' })],
     ]);
     vi.stubGlobal('fetch', fetchMock);
     const body = await (await post('/api/discover', { accessToken: 'a' })).json();
     expect(body.memory).toHaveLength(3);
+  });
+});
+
+describe('POST /api/memory/check — a health check the user asks for', () => {
+  const LISTED = [`${PORTAL}/api/users/me/apps`, () => json({ apps: [{ url: 'https://memory.example.com' }] })];
+
+  it('requires the access token', async () => {
+    expect((await post('/api/memory/check', { url: 'https://memory.example.com' })).status).toBe(401);
+  });
+
+  it('checks the health of a listed server with no credentials, and refuses redirects', async () => {
+    fetchMock = portalRouter([
+      LISTED,
+      ['https://memory.example.com/api/health', () => json({ status: 'ok', portalAuthEnabled: true, apiVersion: 1 })],
+    ]);
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await post('/api/memory/check', { accessToken: 'a', url: 'https://memory.example.com/' }, {});
+    expect(await res.json()).toEqual({
+      url: 'https://memory.example.com',
+      health: { ok: true, status: 200, portalAuthEnabled: true, apiVersion: 1 },
+    });
+    const health = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/api/health'));
+    expect(health[1].headers.Authorization).toBeUndefined();
+    expect(health[1].redirect).toBe('error');
+  });
+
+  it('refuses an address that is not on the account, and contacts it not at all', async () => {
+    fetchMock = portalRouter([LISTED]);
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await post('/api/memory/check', { accessToken: 'a', url: 'https://elsewhere.example.com' });
+    expect(res.status).toBe(404);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('elsewhere.example.com'))).toBe(false);
+  });
+
+  it('refuses an insecure address before anything is requested', async () => {
+    fetchMock = portalRouter([LISTED]);
+    vi.stubGlobal('fetch', fetchMock);
+    expect((await post('/api/memory/check', { accessToken: 'a', url: 'http://memory.example.com' })).status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('answers a server that is down as unhealthy, not as an error', async () => {
+    fetchMock = portalRouter([
+      LISTED,
+      ['https://memory.example.com/api/health', () => { throw new TypeError('Failed to fetch'); }],
+    ]);
+    vi.stubGlobal('fetch', fetchMock);
+    const body = await (await post('/api/memory/check', { accessToken: 'a', url: 'https://memory.example.com' })).json();
+    expect(body.health).toEqual({ ok: false, status: 0, portalAuthEnabled: null, apiVersion: null });
+  });
+});
+
+describe('POST /api/memory/models — the sign-in token goes to one listed server', () => {
+  const LISTED = [`${PORTAL}/api/users/me/apps`, () => json({ apps: [{ url: 'https://memory.example.com' }] })];
+
+  it('requires both tokens', async () => {
+    expect((await post('/api/memory/models', { accessToken: 'a', url: 'https://memory.example.com' })).status).toBe(401);
+    expect((await post('/api/memory/models', { idToken: 'i', url: 'https://memory.example.com' })).status).toBe(401);
+  });
+
+  it('sends the id token to the listed server it is asked about, and to no redirect', async () => {
+    fetchMock = portalRouter([
+      LISTED,
+      ['https://memory.example.com/api/llm/models', () => json([{ name: 'qwen-vl', vision: true, tools: true }])],
+    ]);
+    vi.stubGlobal('fetch', fetchMock);
+    const body = await (await post('/api/memory/models', { accessToken: 'a', idToken: 'id-1', url: 'https://memory.example.com' })).json();
+    expect(body.llm.ok).toBe(true);
+    expect(body.llm.models).toEqual([{ id: 'qwen-vl', vision: true, tools: true, thinking: false }]);
+    const models = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/api/llm/models'));
+    expect(models[1].headers.Authorization).toBe('Bearer id-1');
+    expect(models[1].redirect).toBe('error');
+  });
+
+  it('never sends the id token to an address the account does not list', async () => {
+    fetchMock = portalRouter([LISTED]);
+    vi.stubGlobal('fetch', fetchMock);
+    const res = await post('/api/memory/models', { accessToken: 'a', idToken: 'id-1', url: 'https://attacker.example.com' });
+    expect(res.status).toBe(404);
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('attacker.example.com'))).toBe(false);
   });
 });
 

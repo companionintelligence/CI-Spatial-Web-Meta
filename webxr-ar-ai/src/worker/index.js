@@ -63,6 +63,12 @@ async function route(request, url, cfg) {
   if (pathname === '/api/discover' && method === 'POST') {
     return discover(request, cfg);
   }
+  if (pathname === '/api/memory/check' && method === 'POST') {
+    return memoryCheck(request, cfg);
+  }
+  if (pathname === '/api/memory/models' && method === 'POST') {
+    return memoryModels(request, cfg);
+  }
   return json({ error: 'not_found', message: 'No such endpoint.' }, 404);
 }
 
@@ -143,7 +149,6 @@ async function session(request, cfg) {
 async function discover(request, cfg) {
   const body = await readJson(request);
   const accessToken = typeof body?.accessToken === 'string' ? body.accessToken : null;
-  const idToken = typeof body?.idToken === 'string' ? body.idToken : null;
   if (!accessToken) return json({ error: 'unauthorized', message: 'Sign in first.' }, 401);
 
   // Which memory servers does this user have? The Portal answers this only for a
@@ -162,33 +167,91 @@ async function discover(request, cfg) {
     .filter((app) => app && typeof app.url === 'string')
     .slice(0, MAX_MEMORY_SERVERS);
 
-  const memory = await Promise.all(apps.map((app) => describeMemory(app, idToken)));
+  // Listing is not contacting. Nothing here reaches a memory server or sends a token to one:
+  // each server is checked only when the user asks (POST /api/memory/check), and the sign-in
+  // token goes only to the server the user then chooses (POST /api/memory/models).
+  const memory = apps.map(describeMemory);
   return json({ portal: { ok: true, status: listing.status }, memory });
 }
 
-async function describeMemory(app, idToken) {
+function describeMemory(app) {
   const name = typeof app.deviceName === 'string' && app.deviceName ? app.deviceName : 'Memory server';
   const base = memoryBase(app.url);
   if (!base) {
-    return { name, url: null, health: { ok: false, status: 0, reason: 'insecure_address' }, llm: null };
+    return { name, url: null, checked: true, health: { ok: false, status: 0, reason: 'insecure_address' }, llm: null };
   }
-  const health = await probe(`${base}/api/health`);
-  const llm = health.ok && idToken ? await listModels(`${base}/api/llm/models`, idToken) : null;
-  return {
-    name,
-    url: base,
+  return { name, url: base, checked: false, health: null, llm: null };
+}
+
+/**
+ * The memory servers the Portal lists for this account, normalised. Null when the Portal
+ * refuses the listing. A request to a server is made only if it is in this set.
+ */
+async function listedMemoryBases(cfg, accessToken) {
+  const listing = await fetch(`${cfg.portalUrl}/api/users/me/apps?slug=${MEMORY_APP_SLUG}`, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: 'application/json' },
+  });
+  if (!listing.ok) return null;
+  const data = await listing.json().catch(() => ({}));
+  const apps = (Array.isArray(data.apps) ? data.apps : []).slice(0, MAX_MEMORY_SERVERS);
+  return new Set(apps.map((app) => memoryBase(app?.url)).filter(Boolean));
+}
+
+/**
+ * Check one of the user's memory servers: its health, with no credentials sent. The
+ * app asks for this only after the user confirms they want to contact that server.
+ */
+async function memoryCheck(request, cfg) {
+  const body = await readJson(request);
+  const accessToken = typeof body?.accessToken === 'string' ? body.accessToken : null;
+  if (!accessToken) return json({ error: 'unauthorized', message: 'Sign in first.' }, 401);
+  const target = await listedTarget(body, cfg, accessToken);
+  if (target.response) return target.response;
+
+  const health = await probe(`${target.base}/api/health`, {}, { redirect: 'error' });
+  return json({
+    url: target.base,
     health: {
       ok: health.ok,
       status: health.status,
       portalAuthEnabled: health.body?.portalAuthEnabled ?? null,
       apiVersion: health.body?.apiVersion ?? null,
     },
-    llm,
-  };
+  });
+}
+
+/**
+ * The language models of one of the user's memory servers. The sign-in token is sent to
+ * that server, and to no other host: the address must be one the Portal lists for the user.
+ */
+async function memoryModels(request, cfg) {
+  const body = await readJson(request);
+  const accessToken = typeof body?.accessToken === 'string' ? body.accessToken : null;
+  const idToken = typeof body?.idToken === 'string' ? body.idToken : null;
+  if (!accessToken || !idToken) return json({ error: 'unauthorized', message: 'Sign in first.' }, 401);
+  const target = await listedTarget(body, cfg, accessToken);
+  if (target.response) return target.response;
+
+  const llm = await listModels(`${target.base}/api/llm/models`, idToken);
+  return json({ url: target.base, llm });
+}
+
+/** Validates the address in a request against the user's listing. { base } or { response }. */
+async function listedTarget(body, cfg, accessToken) {
+  const base = memoryBase(typeof body?.url === 'string' ? body.url : '');
+  if (!base) return { response: badRequest('The memory server address must be https.') };
+  const listed = await listedMemoryBases(cfg, accessToken);
+  if (!listed) {
+    return { response: json({ error: 'unauthorized', message: 'Your sign-in has expired. Sign in again.' }, 401) };
+  }
+  if (!listed.has(base)) {
+    return { response: json({ error: 'not_listed', message: 'That server is not on your account.' }, 404) };
+  }
+  return { base };
 }
 
 async function listModels(url, idToken) {
-  const res = await probe(url, { Authorization: `Bearer ${idToken}` });
+  const res = await probe(url, { Authorization: `Bearer ${idToken}` }, { redirect: 'error' });
   if (!res.ok) return { ok: false, status: res.status, models: [] };
   const list = Array.isArray(res.body) ? res.body : Array.isArray(res.body?.models) ? res.body.models : [];
   const models = list.slice(0, MAX_MODELS)
@@ -202,11 +265,15 @@ async function listModels(url, idToken) {
   return { ok: true, status: res.status, models };
 }
 
-/** A GET with a timeout that never throws: { ok, status, body }. */
-async function probe(url, headers = {}) {
+/**
+ * A GET with a timeout that never throws: { ok, status, body }. `redirect: 'error'` stops a
+ * server from bouncing the request, and any token with it, to another host.
+ */
+async function probe(url, headers = {}, { redirect = 'follow' } = {}) {
   try {
     const res = await fetch(url, {
       headers: { Accept: 'application/json', ...headers },
+      redirect,
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     });
     const body = await res.json().catch(() => null);

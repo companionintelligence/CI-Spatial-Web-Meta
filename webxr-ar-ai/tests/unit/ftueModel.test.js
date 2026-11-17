@@ -172,10 +172,39 @@ describe('firstRunStatus — choosing a memory server', () => {
   });
 });
 
+describe('firstRunStatus — a server listed but not yet checked', () => {
+  const unchecked = { name: 'Living room Core', url: 'https://memory.example.com', checked: false, health: null, llm: null };
+  const signedIn = { signedIn: true, identity: { email: 'me@example.com' } };
+
+  it('is found, not ready, and says the check will contact its host', () => {
+    const status = firstRunStatus({ ...signedIn, discovery: { portal: { ok: true }, memory: [unchecked] } });
+    expect(status).toMatchObject({ step: FTUE_STEP.FIND, tone: 'info', title: 'Found Living room Core' });
+    expect(status.detail).toMatch(/Checking contacts memory\.example\.com/);
+    expect(status.memory).toEqual(unchecked);
+  });
+
+  it('asks for a check before use, when the user has chosen it but not yet checked it', () => {
+    const status = firstRunStatus({
+      ...signedIn,
+      discovery: { portal: { ok: true }, memory: [unchecked] },
+      memoryUrl: 'https://memory.example.com',
+    });
+    expect(status).toMatchObject({ step: FTUE_STEP.FIND, title: 'Check Living room Core before you use it' });
+    expect(status.detail).toMatch(/Only the server you choose receives your sign-in/);
+  });
+});
+
+describe('modelsLine — before a server is chosen', () => {
+  it('says the models are listed once the server is used, since nothing is sent before that', () => {
+    expect(modelsLine({ llm: null })).toBe('Its language models are listed once you use it.');
+    expect(modelsLine({})).toBe('Its language models are listed once you use it.');
+  });
+});
+
 describe('modelsLine', () => {
   it('says when the language-model check needs a sign-in', () => {
     expect(modelsLine({ llm: { ok: false } })).toBe('Its language models need a sign-in the server accepts.');
-    expect(modelsLine({})).toBe('Its language models need a sign-in the server accepts.');
+    expect(modelsLine({ llm: { ok: false, status: 401, models: [] } })).toBe('Its language models need a sign-in the server accepts.');
   });
 
   it('says when no models are installed', () => {

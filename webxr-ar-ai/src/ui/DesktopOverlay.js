@@ -38,12 +38,14 @@ import {
 import { cssVar } from './theme.js';
 import {
   beginSignIn,
+  checkMemoryServer,
   clearSession,
   discoverResources,
   fetchIdentity,
   getSession,
+  listMemoryModels,
 } from '../net/PortalSession.js';
-import { firstRunStatus, FTUE_STEP } from '../net/ftueModel.js';
+import { firstRunStatus, FTUE_STEP, hostOf } from '../net/ftueModel.js';
 import { describeArError } from '../app/questApp.js';
 import { cameraToggleLabel, recordingIndicator } from '../privacy/capturePolicy.js';
 import { loadRoomName, saveRoomName } from '../scan/hierarchy.js';
@@ -205,6 +207,7 @@ export class DesktopOverlay {
         <div id="co-ftue-detail" class="co-note"></div>
         <div class="co-row co-ftue-actions">
           <button id="co-ftue-primary">Sign in with Companion Intelligence</button>
+          <button id="co-ftue-check" hidden>Check this server</button>
           <button id="co-ftue-use" hidden>Use this memory server</button>
         </div>
       </div>
@@ -436,6 +439,7 @@ export class DesktopOverlay {
     this._discovery = null;
     this._root.querySelector('#co-ftue-primary').addEventListener('click', () => this._onFtuePrimary());
     this._root.querySelector('#co-ftue-use').addEventListener('click', () => this._useMemory());
+    this._root.querySelector('#co-ftue-check').addEventListener('click', () => this._checkMemory());
 
     this._refreshFtue();
     if (this._session) this._autoDiscover();
@@ -487,6 +491,16 @@ export class DesktopOverlay {
     const candidate = status.memory?.url && status.memory.health?.ok && status.step !== FTUE_STEP.READY;
     use.hidden = !candidate;
     if (candidate) use.textContent = `Use ${status.memory.name}`;
+
+    // A server the Portal lists but nothing has contacted yet: the user checks it first.
+    const check = this._root.querySelector('#co-ftue-check');
+    const unchecked = Boolean(status.memory?.url) && status.memory.health === null;
+    check.hidden = !unchecked;
+    if (unchecked) {
+      check.textContent = this._checkConfirmFor === status.memory.url
+        ? `Confirm: contact ${hostOf(status.memory.url)}`
+        : `Check ${status.memory.name}`;
+    }
     this._refreshConnStatus();
   }
 
@@ -512,6 +526,36 @@ export class DesktopOverlay {
     this._refreshFtue();
   }
 
+  /**
+   * Checking a memory server contacts it, so the first press only asks and the second
+   * confirms. The check sends no credential to the server; it asks only whether it answers.
+   */
+  async _checkMemory() {
+    const memory = this._firstRun().memory;
+    if (!memory?.url || !this._session || memory.health !== null) return;
+    if (this._checkConfirmFor !== memory.url) {
+      this._checkConfirmFor = memory.url;
+      appState.setStatus(`Checking contacts ${hostOf(memory.url)}. Press Confirm to go ahead.`, 'warn');
+      this._refreshFtue();
+      return;
+    }
+    this._checkConfirmFor = null;
+    this._setFtueBusy(true);
+    try {
+      const answer = await checkMemoryServer({ session: this._session, url: memory.url });
+      this._mergeMemory(memory.url, { health: answer.health });
+      appState.setStatus(
+        answer.health.ok ? `${memory.name} answered` : `${memory.name} did not answer`,
+        answer.health.ok ? 'ok' : 'warn',
+      );
+    } catch (err) {
+      appState.setStatus(err?.message ?? String(err), 'error');
+    } finally {
+      this._setFtueBusy(false);
+      this._refreshFtue();
+    }
+  }
+
   _useMemory() {
     const memory = this._firstRun().memory;
     if (!memory?.url || !memory.health?.ok) return;
@@ -522,6 +566,35 @@ export class DesktopOverlay {
       appState.setStatus(err.message, 'error');
     }
     this._refreshFtue();
+    this._loadModels(memory);
+  }
+
+  /**
+   * The language models of the server just chosen. The sign-in goes to that server only:
+   * listMemoryModels refuses any other address.
+   */
+  async _loadModels(memory) {
+    if (!this._session || memory.llm) return;
+    try {
+      const answer = await listMemoryModels({
+        session: this._session,
+        url: memory.url,
+        chosenUrl: this.connection?.getMemoryUrl?.() ?? '',
+      });
+      this._mergeMemory(memory.url, { llm: answer.llm });
+    } catch {
+      this._mergeMemory(memory.url, { llm: { ok: false, status: 0, models: [] } });
+    }
+    this._refreshFtue();
+  }
+
+  /** Replace one server's entry in the discovery result, found by its address. */
+  _mergeMemory(url, patch) {
+    if (!this._discovery?.memory) return;
+    this._discovery = {
+      ...this._discovery,
+      memory: this._discovery.memory.map((entry) => (entry.url === url ? { ...entry, ...patch } : entry)),
+    };
   }
 
   _setFtueBusy(busy) {

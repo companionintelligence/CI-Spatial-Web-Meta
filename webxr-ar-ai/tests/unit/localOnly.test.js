@@ -7,6 +7,7 @@ import {
   assertLocalUrl,
   isLocalHostname,
   isLocalUrl,
+  sameServer,
 } from '../../src/net/localOnly.js';
 
 describe('isLocalHostname — what counts as this network', () => {
@@ -77,5 +78,25 @@ describe('isLocalUrl', () => {
     expect(isLocalUrl('https://example.com/')).toBe(false);
     expect(isLocalUrl('/v1/scans', 'https://192.168.1.2:8081/')).toBe(true);
     expect(isLocalUrl('not a url')).toBe(false);
+  });
+});
+
+describe('sameServer — the sign-in token goes to the chosen server and no other', () => {
+  it('matches the same server, whatever the trailing slash', () => {
+    expect(sameServer('https://memory.example.com', 'https://memory.example.com/')).toBe(true);
+    expect(sameServer('https://memory.example.com/api', 'https://memory.example.com/api/')).toBe(true);
+  });
+
+  it('refuses another host, another port, another scheme, and another path', () => {
+    expect(sameServer('https://memory.example.com', 'https://attacker.example.com')).toBe(false);
+    expect(sameServer('https://memory.example.com', 'https://memory.example.com:8443')).toBe(false);
+    expect(sameServer('https://memory.example.com', 'http://memory.example.com')).toBe(false);
+    expect(sameServer('https://memory.example.com/a', 'https://memory.example.com/b')).toBe(false);
+  });
+
+  it('refuses an address that is not a web address, so nothing matches by accident', () => {
+    expect(sameServer('', '')).toBe(false);
+    expect(sameServer('not a url', 'not a url')).toBe(false);
+    expect(sameServer('file:///etc/passwd', 'file:///etc/passwd')).toBe(false);
   });
 });

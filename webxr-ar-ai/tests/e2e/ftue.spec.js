@@ -10,21 +10,19 @@ import { installIwer } from './helpers/iwer-setup.js';
 const PORTAL = 'https://hub.ci.computer';
 const MEMORY_URL = 'https://mem.example.com';
 const IDENTITY = { sub: 'user-1', email: 'me@example.com', name: 'Me' };
+// What the Worker lists: the account's servers, none of them contacted yet.
 const LISTING = {
   portal: { ok: true, status: 200 },
-  memory: [{
-    name: 'Companion Memory',
-    url: MEMORY_URL,
-    health: { ok: true, status: 200, portalAuthEnabled: true, apiVersion: '1' },
-    llm: {
-      ok: true,
-      status: 200,
-      models: [
-        { id: 'llama3', vision: false, tools: true, thinking: false },
-        { id: 'llava', vision: true, tools: false, thinking: false },
-      ],
-    },
-  }],
+  memory: [{ name: 'Companion Memory', url: MEMORY_URL, checked: false, health: null, llm: null }],
+};
+const HEALTH = { ok: true, status: 200, portalAuthEnabled: true, apiVersion: '1' };
+const MODELS = {
+  ok: true,
+  status: 200,
+  models: [
+    { id: 'llama3', vision: false, tools: true, thinking: false },
+    { id: 'llava', vision: true, tools: false, thinking: false },
+  ],
 };
 
 /** A signed-in session in this browser, unless one is already stored. */
@@ -40,15 +38,39 @@ async function seedSession(page) {
   });
 }
 
-/** Mock the Worker's session and discovery routes. The returned counter counts discoveries. */
+/**
+ * Mock the Worker's session, discovery, check and models routes. The returned counters
+ * count each call; `bodies.models` keeps what the models call sent (the sign-in token).
+ */
 async function mockWorker(page, { listing = LISTING } = {}) {
-  const calls = { discover: 0 };
+  const calls = { discover: 0, check: 0, models: 0 };
+  const bodies = { models: null };
   await page.route('**/api/session', route => route.fulfill({ json: IDENTITY }));
   await page.route('**/api/discover', route => {
     calls.discover += 1;
     route.fulfill({ json: listing });
   });
+  await page.route('**/api/memory/check', route => {
+    calls.check += 1;
+    route.fulfill({ json: { url: MEMORY_URL, health: HEALTH } });
+  });
+  await page.route('**/api/memory/models', route => {
+    calls.models += 1;
+    bodies.models = route.request().postDataJSON();
+    route.fulfill({ json: { url: MEMORY_URL, llm: MODELS } });
+  });
+  calls.bodies = bodies;
   return calls;
+}
+
+/** Check the found server (asks, then confirms), then use it. */
+async function checkThenUse(page) {
+  await expect(page.locator('#co-ftue-check')).toBeVisible({ timeout: 15_000 });
+  await page.click('#co-ftue-check');
+  await expect(page.locator('#co-ftue-check')).toHaveText('Confirm: contact mem.example.com');
+  await page.click('#co-ftue-check');
+  await expect(page.locator('#co-ftue-use')).toBeVisible({ timeout: 15_000 });
+  await page.click('#co-ftue-use');
 }
 
 test.describe('First-run flow', () => {
@@ -114,32 +136,66 @@ test.describe('First-run flow', () => {
     await expect(page).toHaveURL(`${origin}/`);
   });
 
-  test('finds the memory server and its models on its own once signed in', async ({ page }) => {
+  test('lists the memory server on its own, and contacts nothing until the user asks', async ({ page }) => {
     await seedSession(page);
     const calls = await mockWorker(page);
 
     await page.goto('/');
 
     await expect(page.locator('#co-ftue-title')).toHaveText('Found Companion Memory', { timeout: 15_000 });
-    await expect(page.locator('#co-ftue-detail')).toHaveText('2 language models, 1 with vision. Use it to connect.');
-    await expect(page.locator('#co-ftue-use')).toHaveText('Use Companion Memory');
+    await expect(page.locator('#co-ftue-detail')).toHaveText(
+      'Check it to see whether it answers. Checking contacts mem.example.com.',
+    );
+    await expect(page.locator('#co-ftue-check')).toHaveText('Check Companion Memory');
     expect(calls.discover).toBe(1);
+    expect(calls.check).toBe(0);
+    expect(calls.models).toBe(0);
   });
 
-  test('uses the server it found, and keeps that choice across a reload', async ({ page }) => {
+  test('checks the server only after the user confirms, then lists its models once it is used', async ({ page }) => {
     await seedSession(page);
-    await mockWorker(page);
+    const calls = await mockWorker(page);
     await page.goto('/');
 
-    await expect(page.locator('#co-ftue-use')).toBeVisible({ timeout: 15_000 });
-    await page.click('#co-ftue-use');
+    await checkThenUse(page);
+
+    await expect(page.locator('#co-ftue-title')).toHaveText('Using Companion Memory');
+    await expect(page.locator('#co-ftue-detail')).toHaveText('2 language models, 1 with vision.');
+    expect(calls.check).toBe(1);
+    expect(calls.models).toBe(1);
+  });
+
+  test('the sign-in is sent to the server the user chose, and only once it is chosen', async ({ page }) => {
+    await seedSession(page);
+    const calls = await mockWorker(page);
+    await page.goto('/');
+    await expect(page.locator('#co-ftue-check')).toBeVisible({ timeout: 15_000 });
+    expect(calls.bodies.models).toBeNull();
+
+    await checkThenUse(page);
+
+    await expect(page.locator('#co-ftue-title')).toHaveText('Using Companion Memory');
+    expect(calls.bodies.models).toEqual({ accessToken: 'access-test', idToken: 'id-test', url: MEMORY_URL });
+  });
+
+  test('uses the server it found, and keeps that choice across a reload without contacting it again', async ({ page }) => {
+    await seedSession(page);
+    const calls = await mockWorker(page);
+    await page.goto('/');
+
+    await checkThenUse(page);
 
     await expect(page.locator('#co-ftue-title')).toHaveText('Using Companion Memory');
     await expect(page.locator('#co-ftue-use')).toBeHidden();
     expect(await page.evaluate(() => localStorage.getItem('companionScan.memoryUrl'))).toBe(MEMORY_URL);
 
+    // The choice is kept, but a reload contacts nothing: the server must be checked again.
+    const checksBeforeReload = calls.check;
     await page.reload();
-    await expect(page.locator('#co-ftue-title')).toHaveText('Using Companion Memory', { timeout: 15_000 });
+    await expect(page.locator('#co-ftue-title')).toHaveText('Check Companion Memory before you use it', { timeout: 15_000 });
+    await expect(page.locator('#co-ftue-check')).toBeVisible();
+    expect(calls.check).toBe(checksBeforeReload);
+    expect(await page.evaluate(() => localStorage.getItem('companionScan.memoryUrl'))).toBe(MEMORY_URL);
   });
 
   test('asks for sign-in again when the Portal refuses the session', async ({ page }) => {
@@ -157,8 +213,7 @@ test.describe('First-run flow', () => {
     await seedSession(page);
     await mockWorker(page);
     await page.goto('/');
-    await expect(page.locator('#co-ftue-use')).toBeVisible({ timeout: 15_000 });
-    await page.click('#co-ftue-use');
+    await checkThenUse(page);
     await expect(page.locator('#co-ftue-title')).toHaveText('Using Companion Memory');
 
     await page.click('#co-oauth-disconnect');

@@ -94,3 +94,25 @@ export function assertLocalUrl(url, base) {
   if (!isLocalHostname(parsed.hostname)) throw new NonLocalDestinationError(parsed.host);
   return parsed.href;
 }
+
+/**
+ * Whether two addresses name the same server (scheme, host, port and path; a trailing
+ * slash does not matter). The sign-in token is sent only to the server the user chose,
+ * so the check compares that server with the address a request is about to go to.
+ * @param {string} a
+ * @param {string} b
+ * @returns {boolean}
+ */
+export function sameServer(a, b) {
+  const key = (raw) => {
+    try {
+      const parsed = new URL(String(raw ?? ''));
+      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+      return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
+    } catch {
+      return null;
+    }
+  };
+  const left = key(a);
+  return left !== null && left === key(b);
+}
