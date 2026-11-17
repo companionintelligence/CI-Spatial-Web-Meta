@@ -1,0 +1,5 @@
+# Test dependencies for cv-server. The suite runs without torch and without a GPU:
+#   python -m pytest cv-server/tests
+-r requirements.txt
+pytest>=8.0
+httpx>=0.27

@@ -8,10 +8,17 @@ services:
       - "8000:8000"
     volumes:
       - ./weights:/weights
+      # Scans (keyframes, planes, detections) persist here, outside the container.
+      - ./data:/data
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - GLTF_STORE=/tmp/gltf_uploads
       - FLORENCE_MODEL_ID=microsoft/Florence-2-large
+      # Local scan API (POST /v1/scans). groundingdino is the GPU backend; set
+      # CV_DETECTOR=stub to run the pipeline without the weights.
+      - CV_DETECTOR=${CV_DETECTOR:-groundingdino}
+      - CV_DATA_DIR=/data
+      - GDINO_WEIGHTS=/weights/groundingdino_swint_ogc.pth
       # Comma-separated origins allowed to call /v1/* from a browser (CORS).
       # Default "*" is fine on a trusted LAN; if this server is reachable
       # from the internet, restrict it to your deployed frontend, e.g.

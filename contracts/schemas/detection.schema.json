@@ -1,0 +1,95 @@
+{
+  "$defs": {
+    "DetectorInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "title": "DetectorInfo",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One OBJECT: a labelled 2D box in one keyframe. Placed in the room by the headset.",
+  "properties": {
+    "detection_id": {
+      "title": "Detection Id",
+      "type": "string"
+    },
+    "keyframe_id": {
+      "pattern": "^kf-[0-9]{4,}$",
+      "title": "Keyframe Id",
+      "type": "string"
+    },
+    "level": {
+      "const": "OBJECT",
+      "default": "OBJECT",
+      "title": "Level",
+      "type": "string"
+    },
+    "label": {
+      "title": "Label",
+      "type": "string"
+    },
+    "confidence": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "bbox_cxcywh": {
+      "items": {
+        "maximum": 1,
+        "minimum": 0,
+        "type": "number"
+      },
+      "maxItems": 4,
+      "minItems": 4,
+      "title": "Bbox Cxcywh",
+      "type": "array"
+    },
+    "cx": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Cx",
+      "type": "number"
+    },
+    "cy": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Cy",
+      "type": "number"
+    },
+    "mask": {
+      "default": null,
+      "title": "Mask",
+      "type": "null"
+    },
+    "detector": {
+      "$ref": "#/$defs/DetectorInfo"
+    }
+  },
+  "required": [
+    "detection_id",
+    "keyframe_id",
+    "label",
+    "confidence",
+    "bbox_cxcywh",
+    "cx",
+    "cy",
+    "detector"
+  ],
+  "title": "Detection",
+  "type": "object"
+}

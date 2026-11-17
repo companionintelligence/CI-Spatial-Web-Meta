@@ -1,0 +1,328 @@
+{
+  "$defs": {
+    "Detection": {
+      "additionalProperties": false,
+      "description": "One OBJECT: a labelled 2D box in one keyframe. Placed in the room by the headset.",
+      "properties": {
+        "detection_id": {
+          "title": "Detection Id",
+          "type": "string"
+        },
+        "keyframe_id": {
+          "pattern": "^kf-[0-9]{4,}$",
+          "title": "Keyframe Id",
+          "type": "string"
+        },
+        "level": {
+          "const": "OBJECT",
+          "default": "OBJECT",
+          "title": "Level",
+          "type": "string"
+        },
+        "label": {
+          "title": "Label",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "bbox_cxcywh": {
+          "items": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "title": "Bbox Cxcywh",
+          "type": "array"
+        },
+        "cx": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Cx",
+          "type": "number"
+        },
+        "cy": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Cy",
+          "type": "number"
+        },
+        "mask": {
+          "default": null,
+          "title": "Mask",
+          "type": "null"
+        },
+        "detector": {
+          "$ref": "#/$defs/DetectorInfo"
+        }
+      },
+      "required": [
+        "detection_id",
+        "keyframe_id",
+        "label",
+        "confidence",
+        "bbox_cxcywh",
+        "cx",
+        "cy",
+        "detector"
+      ],
+      "title": "Detection",
+      "type": "object"
+    },
+    "DetectorInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "version"
+      ],
+      "title": "DetectorInfo",
+      "type": "object"
+    },
+    "ImageOut": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "const": "jpeg",
+          "default": "jpeg",
+          "title": "Format",
+          "type": "string"
+        },
+        "width": {
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "title": "Height",
+          "type": "integer"
+        },
+        "file": {
+          "title": "File",
+          "type": "string"
+        }
+      },
+      "required": [
+        "width",
+        "height",
+        "file"
+      ],
+      "title": "ImageOut",
+      "type": "object"
+    },
+    "Intrinsics": {
+      "additionalProperties": false,
+      "description": "Pinhole model of the passthrough camera, in pixels of the keyframe image.",
+      "properties": {
+        "fx": {
+          "exclusiveMinimum": 0,
+          "title": "Fx",
+          "type": "number"
+        },
+        "fy": {
+          "exclusiveMinimum": 0,
+          "title": "Fy",
+          "type": "number"
+        },
+        "cx": {
+          "title": "Cx",
+          "type": "number"
+        },
+        "cy": {
+          "title": "Cy",
+          "type": "number"
+        }
+      },
+      "required": [
+        "fx",
+        "fy",
+        "cx",
+        "cy"
+      ],
+      "title": "Intrinsics",
+      "type": "object"
+    },
+    "KeyframeOut": {
+      "additionalProperties": false,
+      "properties": {
+        "keyframe_id": {
+          "pattern": "^kf-[0-9]{4,}$",
+          "title": "Keyframe Id",
+          "type": "string"
+        },
+        "client_keyframe_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Client Keyframe Id"
+        },
+        "captured_at_ms": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Captured At Ms"
+        },
+        "image": {
+          "$ref": "#/$defs/ImageOut"
+        },
+        "pose": {
+          "$ref": "#/$defs/Pose"
+        },
+        "intrinsics": {
+          "$ref": "#/$defs/Intrinsics"
+        },
+        "detection_count": {
+          "minimum": 0,
+          "title": "Detection Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "keyframe_id",
+        "image",
+        "pose",
+        "intrinsics",
+        "detection_count"
+      ],
+      "title": "KeyframeOut",
+      "type": "object"
+    },
+    "Pose": {
+      "additionalProperties": false,
+      "description": "A headset or plane pose in the WebXR local-floor frame: metres, Y up, right-handed.",
+      "properties": {
+        "frame": {
+          "const": "local-floor",
+          "default": "local-floor",
+          "title": "Frame",
+          "type": "string"
+        },
+        "position": {
+          "$ref": "#/$defs/Vec3"
+        },
+        "quaternion": {
+          "$ref": "#/$defs/Quaternion"
+        }
+      },
+      "required": [
+        "position",
+        "quaternion"
+      ],
+      "title": "Pose",
+      "type": "object"
+    },
+    "Quaternion": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "title": "Z",
+          "type": "number"
+        },
+        "w": {
+          "title": "W",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z",
+        "w"
+      ],
+      "title": "Quaternion",
+      "type": "object"
+    },
+    "Vec3": {
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        },
+        "z": {
+          "title": "Z",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "title": "Vec3",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "What the server returns for a create or append: what this request added.",
+  "properties": {
+    "contract_version": {
+      "default": "1.0",
+      "title": "Contract Version",
+      "type": "string"
+    },
+    "scan_id": {
+      "pattern": "^scan_[0-9a-f]{32}$",
+      "title": "Scan Id",
+      "type": "string"
+    },
+    "keyframes": {
+      "items": {
+        "$ref": "#/$defs/KeyframeOut"
+      },
+      "title": "Keyframes",
+      "type": "array"
+    },
+    "detections": {
+      "items": {
+        "$ref": "#/$defs/Detection"
+      },
+      "title": "Detections",
+      "type": "array"
+    }
+  },
+  "required": [
+    "scan_id",
+    "keyframes",
+    "detections"
+  ],
+  "title": "CaptureResult",
+  "type": "object"
+}

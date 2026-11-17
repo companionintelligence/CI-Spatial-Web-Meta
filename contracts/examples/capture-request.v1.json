@@ -1,0 +1,115 @@
+{
+  "hierarchy": {
+    "place": {
+      "id": "place-home",
+      "name": "Home"
+    },
+    "building": {
+      "id": "building-main",
+      "name": "Main house"
+    },
+    "floor": {
+      "id": "floor-ground",
+      "name": "Ground floor",
+      "level": 0
+    },
+    "room": {
+      "id": "room-kitchen",
+      "name": "Kitchen"
+    }
+  },
+  "client": {
+    "name": "companion-scan-quest",
+    "version": "1.0.0",
+    "device": "meta-quest-3",
+    "session_id": "3f0c9a7e-2d1b-4b8e-9c57-1a2b3c4d5e6f"
+  },
+  "planes": [
+    {
+      "id": "plane-1",
+      "label": "floor",
+      "orientation": "horizontal",
+      "pose": {
+        "frame": "local-floor",
+        "position": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "quaternion": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0,
+          "w": 1.0
+        }
+      },
+      "center": {
+        "x": 0.0,
+        "z": 0.0
+      },
+      "size": {
+        "x": 3.2,
+        "z": 2.9
+      }
+    },
+    {
+      "id": "plane-2",
+      "label": "wall",
+      "orientation": "vertical",
+      "pose": {
+        "frame": "local-floor",
+        "position": {
+          "x": 0.0,
+          "y": 1.2,
+          "z": -1.45
+        },
+        "quaternion": {
+          "x": 0.70711,
+          "y": 0.0,
+          "z": 0.0,
+          "w": 0.70711
+        }
+      },
+      "center": {
+        "x": 0.0,
+        "z": 0.0
+      },
+      "size": {
+        "x": 3.2,
+        "z": 2.4
+      }
+    }
+  ],
+  "keyframes": [
+    {
+      "client_keyframe_id": "cap-1",
+      "captured_at_ms": 1763300000000,
+      "image": {
+        "format": "jpeg",
+        "width": 64,
+        "height": 36,
+        "base64": "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAoHBwgHBgoICAgLCgoLDhgQDg0NDh0VFhEYIx8lJCIfIiEmKzcvJik0KSEiMEExNDk7Pj4+JS5ESUM8SDc9Pjv/2wBDAQoLCw4NDhwQEBw7KCIoOzs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozs7Ozv/wAARCAAkAEADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDLooroP7Ls/wDnj/48f8aVSqqdrhCm57HP0V0H9l2f/PH/AMeP+NH9l2f/ADx/8eP+NZfWodmafVpnP1Bc3P2fb8m7dnviun/suz/54/8Ajx/xrldaVUudijCq7gD2zWtOrGo7IipSlBXZH/aX/TH/AMe/+tUtvd/aJCmzbgZznNZlWtO/4+G/3P6itjE0q6uuUrpvtdt/z8Rf99iuLFJu1jswzSvcloqL7Xbf8/EX/fYo+123/PxF/wB9iuPlfY6uZdyWuL13/j8b/ro/866/7Xbf8/EX/fYrkNbIa6LKQQXcgjvzXXhU1J3ObEtNKxmVa07/AI+G/wBz+oqrVrTv+Phv9z+oruOI0qKKKQwooooAKayI+N6K2OmRmiigBvkQ/wDPJP8AvkU5Y40OVRVPqBiiigD/2Q=="
+      },
+      "pose": {
+        "frame": "local-floor",
+        "position": {
+          "x": 0.0,
+          "y": 1.6,
+          "z": 0.5
+        },
+        "quaternion": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0,
+          "w": 1.0
+        }
+      },
+      "intrinsics": {
+        "fx": 38.14,
+        "fy": 38.14,
+        "cx": 32.0,
+        "cy": 18.0
+      }
+    }
+  ]
+}

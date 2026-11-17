@@ -173,3 +173,7 @@ webxr-ar-ai/public/icon-512.png
 *.keystore
 *.jks
 *.p12
+
+# Local scan server data: scans are private (camera frames, room geometry). Never commit them.
+cv-server/data/
+.pytest_cache/

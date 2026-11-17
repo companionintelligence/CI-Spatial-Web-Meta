@@ -26,9 +26,11 @@ RUN pip install --no-cache-dir \
     timm
 
 COPY main.py .
+COPY localscan ./localscan
 
-# Weights are volume-mounted at /weights
-VOLUME ["/weights"]
+# Weights are volume-mounted at /weights; scans are stored under /data
+ENV CV_DATA_DIR=/data
+VOLUME ["/weights", "/data"]
 
 EXPOSE 8000
 
