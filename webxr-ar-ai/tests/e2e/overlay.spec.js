@@ -43,6 +43,17 @@ test.describe('Desktop overlay', () => {
     });
   });
 
+  test('says the CV server needs its token on a 401, not that it is offline', async ({ page }) => {
+    await page.route('**/v1/health', route => route.fulfill({
+      status: 401,
+      contentType: 'application/json',
+      body: '{"detail":"unauthorized"}',
+    }));
+    await page.reload();
+    await expect(page.locator('#co-cv-status')).toContainText(/needs token/i, { timeout: 15_000 });
+    await expect(page.locator('#co-cv-note')).toContainText('wants its token');
+  });
+
   test('adopts the model registry from the CV server', async ({ page }) => {
     await page.waitForFunction(
       () => window.__companionScan?.appState?.models?.length === 5,

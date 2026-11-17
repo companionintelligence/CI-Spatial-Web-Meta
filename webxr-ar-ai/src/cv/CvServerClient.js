@@ -47,8 +47,20 @@ export class CvServerClient {
   // ── Health ──────────────────────────────────────────────────────────────
 
   async health() {
+    return (await this.healthState()) === 'online';
+  }
+
+  /**
+   * Whether the server answers, and whether it takes this app's token. A 401 means the
+   * server is up but wants a token (none was given, or it is wrong). A network error
+   * rejects, as any request does.
+   * @returns {Promise<'online'|'needs-token'|'offline'>}
+   */
+  async healthState() {
     const res = await this._get('/v1/health');
-    return res.ok;
+    if (res.ok) return 'online';
+    if (res.status === 401) return 'needs-token';
+    return 'offline';
   }
 
   // ── Models ───────────────────────────────────────────────────────────────

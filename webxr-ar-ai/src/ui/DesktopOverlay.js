@@ -66,6 +66,19 @@ export function healthDelayMs(failures) {
   return Math.min(HEALTH_MAX_OFFLINE_MS, HEALTH_POLL_MS * 2 ** Math.min(failures, 4));
 }
 
+/** The CV server row's badge for each health state (see CvServerClient.healthState). */
+const CV_HEALTH_BADGE = {
+  online: '<span class="co-badge ok">Online</span>',
+  'needs-token': '<span class="co-badge error">Needs token</span>',
+  offline: '<span class="co-badge error">Offline</span>',
+};
+
+/** The note under that row. Scene pins and GLB export still work without a CV server. */
+const CV_HEALTH_NOTE = {
+  'needs-token': 'The CV server is up but wants its token. Open the app once with ?token=<token> (see the README).',
+  offline: 'No CV server answered. Scene pins and GLB export still work.',
+};
+
 const LEGEND = [
   ['Right A',  'Capture (both pipelines)'],
   ['Right B',  'Cycle CV model (from the server registry)'],
@@ -661,18 +674,21 @@ export class DesktopOverlay {
   async _checkHealth() {
     const el = this._root?.querySelector('#co-cv-status');
     if (!el) return;
-    let online = false;
+    let state = 'offline';
     try {
-      online = await this.cvClient.health();
+      state = await this.cvClient.healthState();
     } catch {
-      online = false;
+      state = 'offline';
     }
+    const online = state === 'online';
     this._healthFailures = online ? 0 : this._healthFailures + 1;
-    el.innerHTML = online
-      ? '<span class="co-badge ok">Online</span>'
-      : '<span class="co-badge error">Offline</span>';
+    el.innerHTML = CV_HEALTH_BADGE[state] ?? CV_HEALTH_BADGE.offline;
     const note = this._root.querySelector('#co-cv-note');
-    if (note) note.hidden = online;
+    if (note) {
+      note.hidden = online;
+      const text = note.querySelector('.co-note');
+      if (text) text.textContent = CV_HEALTH_NOTE[state] ?? CV_HEALTH_NOTE.offline;
+    }
 
     // One pending check at a time: a manual check (after Save) reschedules too.
     clearTimeout(this._healthTimer);
